@@ -1,2 +1,4 @@
-gradio==6.1.0
+gradio==6.2.0
 pandas==2.3.3
+protobuf==6.33.2
+pydantic==2.12.5
