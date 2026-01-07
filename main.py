@@ -2,13 +2,11 @@ import logging
 
 import gradio as gr
 import pandas as pd
-
 from google import genai
 from pydantic import BaseModel
 
-
-RESP_MAX_COUNT = 10
-ADDR_MAX_COUNT = 10
+MAX_RESPONDENT_COUNT = 10
+MAX_ADDRESS_HEADER_COUNT = 10
 GEMINI_MODEL_NAME = "gemini-3-flash-preview"
 GEMINI_PROMPT_PREFIX = "Split the following row of addresses into columns such as Recipient Name/Entity Name, Address Line 1/Care of Name, Address Line 2, Address Line 3, District, State and PIN Code. " \
     "For Name and Care of Name add salutations like Mr., Mrs., Ms. or M/s. if missing. " \
@@ -17,7 +15,7 @@ GEMINI_PROMPT_PREFIX = "Split the following row of addresses into columns such a
     "Correct an incomplete address if necessary. " \
     "Remove redundancy in an address if necessary. " \
     "Convert everything to Proper case."
-GEMINI_MAX_RESP_COUNT = 50
+GEMINI_MAX_RESPONDENT_COUNT = 50
 
 
 logging.basicConfig(
@@ -40,122 +38,122 @@ class RespondentList(BaseModel):
     respondents: list[Respondent]
 
 
-def excel_file_changed(excel_path):
-    if excel_path is None:
-        return [None] * (1 + RESP_MAX_COUNT + (RESP_MAX_COUNT * ADDR_MAX_COUNT))
+def original_excel_file_changed(original_excel_file_path):
+    if original_excel_file_path is None:
+        return [None] * (1 + MAX_RESPONDENT_COUNT + (MAX_RESPONDENT_COUNT * MAX_ADDRESS_HEADER_COUNT))
 
-    excel_data = pd.read_excel(excel_path)
+    original_excel_data_frame = pd.read_excel(original_excel_file_path)
 
-    excel_column_headers = excel_data.columns.tolist()
+    original_excel_column_headers = original_excel_data_frame.columns.tolist()
 
-    name_dropdowns = []
+    name_header_dropdowns = []
 
-    for i in range(RESP_MAX_COUNT):
-        name_dropdown = gr.Dropdown(
-            choices=excel_column_headers,
-            value=excel_column_headers[0]
+    for i in range(MAX_RESPONDENT_COUNT):
+        name_header_dropdown = gr.Dropdown(
+            choices=original_excel_column_headers,
+            value=original_excel_column_headers[0]
         )
 
-        name_dropdowns.append(name_dropdown)
+        name_header_dropdowns.append(name_header_dropdown)
 
-    addr_dropdowns = []
+    address_header_dropdowns = []
 
-    for i in range(RESP_MAX_COUNT):
-        for j in range(ADDR_MAX_COUNT):
-            addr_dropdown = gr.Dropdown(
-                choices=excel_column_headers,
-                value=excel_column_headers[0]
+    for i in range(MAX_RESPONDENT_COUNT):
+        for j in range(MAX_ADDRESS_HEADER_COUNT):
+            address_header_dropdown = gr.Dropdown(
+                choices=original_excel_column_headers,
+                value=original_excel_column_headers[0]
             )
 
-            addr_dropdowns.append(addr_dropdown)
+            address_header_dropdowns.append(address_header_dropdown)
 
-    return [excel_data] + name_dropdowns + addr_dropdowns
+    return [original_excel_data_frame] + name_header_dropdowns + address_header_dropdowns
 
 
-def resp_slider_changed(resp_count):
-    resp_tabs = []
+def respondent_slider_changed(respondent_count):
+    respondent_tabs = []
 
-    for i in range(RESP_MAX_COUNT):
-        resp_tab = gr.Tab(
-            visible=i < resp_count
+    for i in range(MAX_RESPONDENT_COUNT):
+        respondent_tab = gr.Tab(
+            visible=i < respondent_count
         )
 
-        resp_tabs.append(resp_tab)
+        respondent_tabs.append(respondent_tab)
 
-    return resp_tabs
+    return respondent_tabs
 
 
-def addr_slider_changed(addr_count):
-    addr_dropdowns = []
+def address_header_slider_changed(address_header_count):
+    address_header_dropdowns = []
 
-    for i in range(ADDR_MAX_COUNT):
-        addr_dropdown = gr.Dropdown(
-            visible=i < addr_count
+    for i in range(MAX_ADDRESS_HEADER_COUNT):
+        address_header_dropdown = gr.Dropdown(
+            visible=i < address_header_count
         )
 
-        addr_dropdowns.append(addr_dropdown)
+        address_header_dropdowns.append(address_header_dropdown)
 
-    return addr_dropdowns
+    return address_header_dropdowns
 
 
-def addr_dropdown_changed(excel_data, addr_column_header):
-    if excel_data is None or addr_column_header is None:
-        return [None] * (ADDR_MAX_COUNT - 1)
+def address_header_dropdown_changed(original_excel_data_frame, address_header):
+    if original_excel_data_frame is None or address_header is None:
+        return [None] * (MAX_ADDRESS_HEADER_COUNT - 1)
 
-    addr_column_index = excel_data.columns.get_loc(addr_column_header)
+    address_header_index = original_excel_data_frame.columns.get_loc(address_header)
 
-    addr_dropdowns = []
+    address_header_dropdowns = []
 
-    for i in range(1, ADDR_MAX_COUNT):
-        addr_dropdown = gr.Dropdown(
-            value=excel_data.columns[min(addr_column_index + i, len(excel_data.columns) - 1)]
+    for i in range(1, MAX_ADDRESS_HEADER_COUNT):
+        address_header_dropdown = gr.Dropdown(
+            value=original_excel_data_frame.columns[min(address_header_index + i, len(original_excel_data_frame.columns) - 1)]
         )
 
-        addr_dropdowns.append(addr_dropdown)
+        address_header_dropdowns.append(address_header_dropdown)
 
-    return addr_dropdowns
+    return address_header_dropdowns
 
 
-def clean_button_clicked(excel_data, resp_count, *inputs):
-    name_column_headers = inputs[0:RESP_MAX_COUNT]
-    addr_counts = inputs[RESP_MAX_COUNT:2 * RESP_MAX_COUNT]
-    addr_column_headers = inputs[2 * RESP_MAX_COUNT:]
+def clean_button_clicked(original_excel_data_frame, respondent_count, *inputs):
+    name_headers = inputs[0:MAX_RESPONDENT_COUNT]
+    address_header_counts = inputs[MAX_RESPONDENT_COUNT:2 * MAX_RESPONDENT_COUNT]
+    address_headers = inputs[2 * MAX_RESPONDENT_COUNT:]
 
     gemini_client = genai.Client()
 
-    cleaned_excel_data = pd.DataFrame()
+    cleaned_excel_data_frame = pd.DataFrame()
 
-    for i in range(resp_count):
-        resp_name_column_header = name_column_headers[i]
-        resp_name_column_index = excel_data.columns.get_loc(resp_name_column_header)
+    for i in range(respondent_count):
+        name_header = name_headers[i]
+        address_header_count = address_header_counts[i]
+        address_header_list = address_headers[i * MAX_ADDRESS_HEADER_COUNT:i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
 
-        resp_addr_count = addr_counts[i]
-        resp_addr_column_headers = addr_column_headers[i * ADDR_MAX_COUNT:i * ADDR_MAX_COUNT + resp_addr_count]
-        resp_addr_column_indexes = [excel_data.columns.get_loc(resp_addr_column_header) for resp_addr_column_header in resp_addr_column_headers]
+        respondents = []
+        respondent_row_indexes = []
 
-        resps = []
+        for respondent_row_index, row in original_excel_data_frame.iterrows():
+            name = row.loc[name_header]
 
-        for row_index, row in excel_data.iterrows():
-            resp_name = row.iloc[resp_name_column_index]
-
-            if resp_name is None or len(str(resp_name).strip()) <= 3:
+            if name is None or len(str(name).strip()) <= 1:
                 continue
 
-            resp_addrs = [row.iloc[column_index] for column_index in resp_addr_column_indexes]
+            addresses = [row.loc[address_header] for address_header in address_header_list]
 
-            resp = str(resp_name) if resp_name is not None else ""
-            for resp_addr in resp_addrs:
-                resp += ", " + str(resp_addr) if resp_addr is not None else ""
+            respondent = str(name)
+            for address in addresses:
+                if address is not None:
+                    respondent += ", " + str(address)
 
-            resps.append((row_index, resp))
+            respondents.append(respondent)
+            respondent_row_indexes.append(respondent_row_index)
 
-        for j in range(0, len(resps), GEMINI_MAX_RESP_COUNT):
+        for j in range(0, len(respondents), GEMINI_MAX_RESPONDENT_COUNT):
             from_index = j
-            to_index = min(j + GEMINI_MAX_RESP_COUNT, len(resps))
+            to_index = min(j + GEMINI_MAX_RESPONDENT_COUNT, len(respondents))
 
             gemini_prompt = f"{GEMINI_PROMPT_PREFIX}\n"
             for k in range(from_index, to_index):
-                gemini_prompt += f"\n{resps[k][1]}"
+                gemini_prompt += f"\n{respondents[k]}"
 
             logging.info(f"gemini_prompt: {gemini_prompt}")
 
@@ -173,35 +171,31 @@ def clean_button_clicked(excel_data, resp_count, *inputs):
             logging.info(f"gemini_answer: {gemini_answer}")
 
             for k in range(from_index, to_index):
-                row_index = resps[k][0]
-                gemini_resp = gemini_answer.respondents[k - from_index]
+                respondent_row_index = respondent_row_indexes[k]
+                gemini_respondent = gemini_answer.respondents[k - from_index]
 
-                cleaned_excel_data.loc[row_index, f"Respondent {i + 1} Name"] = gemini_resp.name
-                cleaned_excel_data.loc[row_index, f"Respondent {i + 1} Address Line 1"] = gemini_resp.address_line_1
-                cleaned_excel_data.loc[row_index, f"Respondent {i + 1} Address Line 2"] = gemini_resp.address_line_2
-                cleaned_excel_data.loc[row_index, f"Respondent {i + 1} Address Line 3"] = gemini_resp.address_line_3
-                cleaned_excel_data.loc[row_index, f"Respondent {i + 1} District"] = gemini_resp.district
-                cleaned_excel_data.loc[row_index, f"Respondent {i + 1} State"] = gemini_resp.state
-                cleaned_excel_data.loc[row_index, f"Respondent {i + 1} PIN Code"] = gemini_resp.pin_code
+                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Name"] = gemini_respondent.name
+                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 1"] = gemini_respondent.address_line_1
+                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 2"] = gemini_respondent.address_line_2
+                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 3"] = gemini_respondent.address_line_3
+                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} District"] = gemini_respondent.district
+                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} State"] = gemini_respondent.state
+                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} PIN Code"] = gemini_respondent.pin_code
 
-    for i in range(resp_count):
-        resp_name_column_header = name_column_headers[i]
-        resp_name_column_index = excel_data.columns.get_loc(resp_name_column_header)
+    for i in range(respondent_count):
+        name_header = name_headers[i]
+        address_header_count = address_header_counts[i]
+        address_header_list = address_headers[i * MAX_ADDRESS_HEADER_COUNT:i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
 
-        resp_addr_count = addr_counts[i]
-        resp_addr_column_headers = addr_column_headers[i * ADDR_MAX_COUNT:i * ADDR_MAX_COUNT + resp_addr_count]
-        resp_addr_column_indexes = [excel_data.columns.get_loc(resp_addr_column_header) for resp_addr_column_header in resp_addr_column_headers]
+        other_headers = []
 
-        ignore_indexes = []
-        ignore_indexes.append(resp_name_column_index)
-        for resp_addr_column_index in resp_addr_column_indexes:
-            ignore_indexes.append(resp_addr_column_index)
+        for column_index, column_header in enumerate(original_excel_data_frame.columns):
+            if column_header != name_header and column_header not in address_header_list:
+                other_headers.append(column_header)
 
-        for col_index, column in enumerate(excel_data.columns):
-            if col_index not in ignore_indexes:
-                cleaned_excel_data[column] = excel_data[column]
+        cleaned_excel_data_frame[other_headers] = original_excel_data_frame[name_header]
 
-    return cleaned_excel_data
+    return cleaned_excel_data_frame
 
 
 with gr.Blocks(title="CNICA Excel Cleaner") as app:
@@ -209,13 +203,13 @@ with gr.Blocks(title="CNICA Excel Cleaner") as app:
 
     gr.Markdown("### Step 1: Upload Excel File ###")
 
-    excel_file = gr.File(
+    original_excel_file = gr.File(
         label="Excel file",
         file_types=[".xlsx", ".xls"],
         interactive=True
     )
 
-    excel_data_frame = gr.DataFrame(
+    original_excel_data_frame = gr.DataFrame(
         label="Excel data",
         headers=[""],
         interactive=False
@@ -223,56 +217,56 @@ with gr.Blocks(title="CNICA Excel Cleaner") as app:
 
     gr.Markdown("### Step 2: Select No. of Respondents ###")
 
-    resp_slider = gr.Slider(
+    respondent_slider = gr.Slider(
         label="No. of Respondents",
         minimum=1,
-        maximum=RESP_MAX_COUNT,
+        maximum=MAX_RESPONDENT_COUNT,
         step=1,
         interactive=True
     )
 
     gr.Markdown("### Step 3: Select Respondent's Name and Address Column Headers ###")
 
-    resp_tabs = []
-    name_dropdowns = []
-    addr_sliders = []
-    addr_dropdowns = []
+    respondent_tabs = []
+    name_header_dropdowns = []
+    address_header_sliders = []
+    address_header_dropdowns = []
 
-    for i in range(RESP_MAX_COUNT):
+    for i in range(MAX_RESPONDENT_COUNT):
         with gr.Tab(
             label=f"Respondent {i + 1}",
             visible=i == 0
-        ) as resp_tab:
+        ) as respondent_tab:
             with gr.Row():
                 with gr.Column():
-                    name_dropdown = gr.Dropdown(
+                    name_header_dropdown = gr.Dropdown(
                         label="Name column header",
                         interactive=True
                     )
 
-                    name_dropdowns.append(name_dropdown)
+                    name_header_dropdowns.append(name_header_dropdown)
 
                 with gr.Column():
-                    addr_slider = gr.Slider(
+                    address_header_slider = gr.Slider(
                         label="No. of Address column headers",
                         minimum=1,
-                        maximum=ADDR_MAX_COUNT,
+                        maximum=MAX_ADDRESS_HEADER_COUNT,
                         step=1,
                         interactive=True
                     )
 
-                    addr_sliders.append(addr_slider)
+                    address_header_sliders.append(address_header_slider)
 
-                    for j in range(ADDR_MAX_COUNT):
-                        addr_dropdown = gr.Dropdown(
+                    for j in range(MAX_ADDRESS_HEADER_COUNT):
+                        address_header_dropdown = gr.Dropdown(
                             label=f"Address column header {j + 1}",
                             interactive=True,
                             visible=j == 0
                         )
 
-                        addr_dropdowns.append(addr_dropdown)
+                        address_header_dropdowns.append(address_header_dropdown)
 
-        resp_tabs.append(resp_tab)
+        respondent_tabs.append(respondent_tab)
 
     gr.Markdown("### Step 4: Clean Excel File ###")
 
@@ -288,37 +282,37 @@ with gr.Blocks(title="CNICA Excel Cleaner") as app:
         interactive=False
     )
 
-    excel_file.change(
-        fn=excel_file_changed,
-        inputs=excel_file,
-        outputs=[excel_data_frame, *name_dropdowns, *addr_dropdowns]
+    original_excel_file.change(
+        fn=original_excel_file_changed,
+        inputs=original_excel_file,
+        outputs=[original_excel_data_frame, *name_header_dropdowns, *address_header_dropdowns]
     )
 
-    resp_slider.change(
-        fn=resp_slider_changed,
-        inputs=resp_slider,
-        outputs=resp_tabs
+    respondent_slider.change(
+        fn=respondent_slider_changed,
+        inputs=respondent_slider,
+        outputs=respondent_tabs
     )
 
-    for i in range(RESP_MAX_COUNT):
-        addr_slider = addr_sliders[i]
-        addr_slider.change(
-            fn=addr_slider_changed,
-            inputs=addr_slider,
-            outputs=addr_dropdowns[i * 10:i * 10 + 10]
+    for i in range(MAX_RESPONDENT_COUNT):
+        address_header_slider = address_header_sliders[i]
+        address_header_slider.change(
+            fn=address_header_slider_changed,
+            inputs=address_header_slider,
+            outputs=address_header_dropdowns[i * 10:i * 10 + 10]
         )
 
-    for i in range(RESP_MAX_COUNT):
-        addr_dropdown = addr_dropdowns[i * 10]
-        addr_dropdown.change(
-            fn=addr_dropdown_changed,
-            inputs=[excel_data_frame, addr_dropdown],
-            outputs=addr_dropdowns[i * 10 + 1:i * 10 + 10]
+    for i in range(MAX_RESPONDENT_COUNT):
+        address_header_dropdown = address_header_dropdowns[i * 10]
+        address_header_dropdown.change(
+            fn=address_header_dropdown_changed,
+            inputs=[original_excel_data_frame, address_header_dropdown],
+            outputs=address_header_dropdowns[i * 10 + 1:i * 10 + 10]
         )
 
     clean_button.click(
         fn=clean_button_clicked,
-        inputs=[excel_data_frame, resp_slider, *name_dropdowns, *addr_sliders, *addr_dropdowns],
+        inputs=[original_excel_data_frame, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
         outputs=cleaned_excel_data_frame
     )
 
