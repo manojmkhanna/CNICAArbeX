@@ -5,6 +5,7 @@ import pandas as pd
 from google import genai
 from pydantic import BaseModel
 
+DEBUG = True
 MAX_RESPONDENT_COUNT = 10
 MAX_ADDRESS_HEADER_COUNT = 10
 GEMINI_MODEL_NAME = "gemini-3-flash-preview"
@@ -36,6 +37,9 @@ class Respondent(BaseModel):
 
 class RespondentList(BaseModel):
     respondents: list[Respondent]
+
+
+RespondentList.model_rebuild()
 
 
 def original_excel_file_changed(original_excel_file_path):
@@ -155,7 +159,8 @@ def clean_button_clicked(original_excel_data_frame, respondent_count, *inputs):
             for k in range(from_index, to_index):
                 gemini_prompt += f"\n{respondents[k]}"
 
-            logging.info(f"gemini_prompt: {gemini_prompt}")
+            if DEBUG:
+                logging.info(f"gemini_prompt: {gemini_prompt}")
 
             gemini_response = gemini_client.models.generate_content(
                 model=GEMINI_MODEL_NAME,
@@ -168,7 +173,8 @@ def clean_button_clicked(original_excel_data_frame, respondent_count, *inputs):
 
             gemini_answer = RespondentList.model_validate_json(gemini_response.text)
 
-            logging.info(f"gemini_answer: {gemini_answer}")
+            if DEBUG:
+                logging.info(f"gemini_answer: {gemini_answer}")
 
             for k in range(from_index, to_index):
                 respondent_row_index = respondent_row_indexes[k]
@@ -193,9 +199,67 @@ def clean_button_clicked(original_excel_data_frame, respondent_count, *inputs):
             if column_header != name_header and column_header not in address_header_list:
                 other_headers.append(column_header)
 
-        cleaned_excel_data_frame[other_headers] = original_excel_data_frame[name_header]
+        cleaned_excel_data_frame[other_headers] = original_excel_data_frame[other_headers]
 
     return cleaned_excel_data_frame
+
+
+def test_button_clicked():
+    original_excel_data_frame = pd.read_excel("Sample Data 1.xlsx")
+
+    respondent_count = 2
+
+    original_excel_column_headers = original_excel_data_frame.columns.tolist()
+
+    name_header_dropdowns = []
+
+    for i in range(MAX_RESPONDENT_COUNT):
+        name_header_dropdown = gr.Dropdown(
+            choices=original_excel_column_headers
+        )
+
+        name_header_dropdowns.append(name_header_dropdown)
+
+    address_header_counts = []
+
+    for i in range(MAX_RESPONDENT_COUNT):
+        address_header_counts.append(1)
+
+    address_header_dropdowns = []
+
+    for i in range(MAX_RESPONDENT_COUNT):
+        for j in range(MAX_ADDRESS_HEADER_COUNT):
+            address_header_dropdown = gr.Dropdown(
+                choices=original_excel_column_headers
+            )
+
+            address_header_dropdowns.append(address_header_dropdown)
+
+    name_header_dropdowns[0] = gr.Dropdown(
+        choices=original_excel_column_headers,
+        value="APPLICANT NAME",
+    )
+
+    address_header_counts[0] = 9
+
+    address_header_dropdowns[0] = gr.Dropdown(
+        choices=original_excel_column_headers,
+        value="APPLICANT FATHER NAME ",
+    )
+
+    name_header_dropdowns[1] = gr.Dropdown(
+        choices=original_excel_column_headers,
+        value="CO-APPLICANT NAME",
+    )
+
+    address_header_counts[1] = 9
+
+    address_header_dropdowns[10] = gr.Dropdown(
+        choices=original_excel_column_headers,
+        value="CO APPLICANT FATHER NAME ",
+    )
+
+    return [original_excel_data_frame, respondent_count, *name_header_dropdowns, *address_header_counts, *address_header_dropdowns]
 
 
 with gr.Blocks(title="CNICA Excel Cleaner") as app:
@@ -315,5 +379,16 @@ with gr.Blocks(title="CNICA Excel Cleaner") as app:
         inputs=[original_excel_data_frame, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
         outputs=cleaned_excel_data_frame
     )
+
+    if DEBUG:
+        test_button = gr.Button(
+            value="Test",
+            interactive=True
+        )
+
+        test_button.click(
+            fn=test_button_clicked,
+            outputs=[original_excel_data_frame, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
+        )
 
 app.launch()
