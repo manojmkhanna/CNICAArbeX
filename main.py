@@ -119,7 +119,7 @@ def address_header_dropdown_changed(original_excel_data_frame, address_header):
     return address_header_dropdowns
 
 
-def clean_button_clicked(original_excel_data_frame, respondent_count, *inputs):
+def clean_button_clicked(original_excel_file_path, original_excel_data_frame, respondent_count, *inputs):
     name_headers = inputs[0:MAX_RESPONDENT_COUNT]
     address_header_counts = inputs[MAX_RESPONDENT_COUNT:2 * MAX_RESPONDENT_COUNT]
     address_headers = inputs[2 * MAX_RESPONDENT_COUNT:]
@@ -202,7 +202,15 @@ def clean_button_clicked(original_excel_data_frame, respondent_count, *inputs):
 
         cleaned_excel_data_frame[other_headers] = original_excel_data_frame[other_headers]
 
-    return cleaned_excel_data_frame
+    cleaned_excel_file_path = original_excel_file_path.name.replace(".xlsx", " - Cleaned.xlsx")
+
+    cleaned_excel_data_frame.to_excel(cleaned_excel_file_path, index=False)
+
+    download_button = gr.DownloadButton(
+        value=cleaned_excel_file_path
+    )
+
+    return [cleaned_excel_data_frame, download_button]
 
 
 def test_button_clicked():
@@ -347,6 +355,14 @@ with gr.Blocks(title="CNICA Excel Cleaner") as app:
         interactive=False
     )
 
+    gr.Markdown("### Step 5: Download Excel File ###")
+
+    download_button = gr.DownloadButton(
+        value="Download",
+        variant="primary",
+        interactive=True
+    )
+
     original_excel_file.change(
         fn=original_excel_file_changed,
         inputs=original_excel_file,
@@ -377,8 +393,8 @@ with gr.Blocks(title="CNICA Excel Cleaner") as app:
 
     clean_button.click(
         fn=clean_button_clicked,
-        inputs=[original_excel_data_frame, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
-        outputs=cleaned_excel_data_frame
+        inputs=[original_excel_file, original_excel_data_frame, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
+        outputs=[cleaned_excel_data_frame, download_button]
     )
 
     if DEBUG:
