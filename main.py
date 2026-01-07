@@ -413,4 +413,8 @@ with gr.Blocks(title="CNICA Excel Cleaner") as app:
             outputs=[original_excel_data_frame, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
         )
 
-app.launch()
+app.launch(
+    theme=gr.themes.Default(
+        primary_hue=gr.themes.colors.blue
+    )
+)
