@@ -10,11 +10,12 @@ MAX_RESPONDENT_COUNT = 10
 MAX_ADDRESS_HEADER_COUNT = 10
 GEMINI_MODEL_NAME = "gemini-3-flash-preview"
 GEMINI_PROMPT_PREFIX = "Split the following row of addresses into columns such as Recipient Name/Entity Name, Address Line 1/Care of Name, Address Line 2, Address Line 3, District, State and PIN Code. " \
-    "For Name and Care of Name add salutations like Mr., Mrs., Ms. or M/s. if missing. " \
-    "For Care of Name add prefixes like s/o, d/o, f/o, m/o, h/o, w/o or c/o if missing. " \
-    "Correct spelling mistakes and punctuations in an address if necessary. " \
-    "Correct an incomplete address if necessary. " \
-    "Remove redundancy in an address if necessary. " \
+    "Add salutations like Mr., Mrs., Ms. or M/s. to Name and Care of Name if missing. " \
+    "Add prefixes like s/o, d/o, f/o, m/o, h/o, w/o or c/o to Care of Name if missing. " \
+    "Add punctuations to initials in Name and Care of Name if missing. " \
+    "Correct spelling mistakes and punctuations in an Address if necessary. " \
+    "Correct an incomplete Address if necessary. " \
+    "Remove redundancy in an Address if necessary. " \
     "Convert everything to Proper case."
 GEMINI_MAX_RESPONDENT_COUNT = 50
 
