@@ -8,16 +8,17 @@ from pydantic import BaseModel
 DEBUG = True
 MAX_RESPONDENT_COUNT = 10
 MAX_ADDRESS_HEADER_COUNT = 10
-GEMINI_MODEL_NAME = "gemini-3-flash-preview"
-GEMINI_PROMPT_PREFIX = "Split the following row of addresses into columns such as Recipient Name/Entity Name, Address Line 1/Care of Name, Address Line 2, Address Line 3, District, State and PIN Code. " \
+GEMINI_MODEL_NAME = "gemini-2.5-flash"
+GEMINI_PROMPT_PREFIX = "Split the following rows of names and addresses into columns such as Recipient Name/Entity Name, Address Line 1/Care of Name, Address Line 2, Address Line 3, District, State and PIN Code. " \
     "Add salutations like Mr., Mrs., Ms. or M/s. to Name and Care of Name if missing. " \
     "Add prefixes like s/o, d/o, f/o, m/o, h/o, w/o or c/o to Care of Name if missing. " \
     "Add punctuations to initials in Name and Care of Name if missing. " \
     "Correct spelling mistakes and punctuations in an Address if necessary. " \
     "Correct an incomplete Address if necessary. " \
     "Remove redundancy in an Address if necessary. " \
-    "Convert everything to Proper case."
-GEMINI_MAX_RESPONDENT_COUNT = 50
+    "Convert everything to Proper case. " \
+    "Do not ignore duplicate rows of names and addresses."
+GEMINI_MAX_RESPONDENT_COUNT = 100
 
 
 logging.basicConfig(
@@ -163,31 +164,35 @@ def clean_button_clicked(original_excel_file_path, original_excel_data_frame, re
             if DEBUG:
                 logging.info(f"gemini_prompt: {gemini_prompt}")
 
-            gemini_response = gemini_client.models.generate_content(
-                model=GEMINI_MODEL_NAME,
-                contents=gemini_prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_json_schema": RespondentList.model_json_schema()
-                }
-            )
+            try:
+                gemini_response = gemini_client.models.generate_content(
+                    model=GEMINI_MODEL_NAME,
+                    contents=gemini_prompt,
+                    config={
+                        "response_mime_type": "application/json",
+                        "response_json_schema": RespondentList.model_json_schema()
+                    }
+                )
 
-            gemini_answer = RespondentList.model_validate_json(gemini_response.text)
+                gemini_answer = RespondentList.model_validate_json(gemini_response.text)
 
-            if DEBUG:
-                logging.info(f"gemini_answer: {gemini_answer}")
+                if DEBUG:
+                    logging.info(f"gemini_answer: {gemini_answer}")
 
-            for k in range(from_index, to_index):
-                respondent_row_index = respondent_row_indexes[k]
-                gemini_respondent = gemini_answer.respondents[k - from_index]
+                for k in range(from_index, to_index):
+                    respondent_row_index = respondent_row_indexes[k]
+                    gemini_respondent = gemini_answer.respondents[k - from_index]
 
-                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Name"] = gemini_respondent.name
-                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 1"] = gemini_respondent.address_line_1
-                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 2"] = gemini_respondent.address_line_2
-                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 3"] = gemini_respondent.address_line_3
-                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} District"] = gemini_respondent.district
-                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} State"] = gemini_respondent.state
-                cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} PIN Code"] = gemini_respondent.pin_code
+                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Name"] = gemini_respondent.name
+                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 1"] = gemini_respondent.address_line_1
+                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 2"] = gemini_respondent.address_line_2
+                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 3"] = gemini_respondent.address_line_3
+                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} District"] = gemini_respondent.district
+                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} State"] = gemini_respondent.state
+                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} PIN Code"] = gemini_respondent.pin_code
+            except Exception as e:
+                logging.error(e)
+
 
     for i in range(respondent_count):
         name_header = name_headers[i]
