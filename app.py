@@ -44,7 +44,7 @@ class RespondentList(BaseModel):
 RespondentList.model_rebuild()
 
 
-def original_excel_file_changed(original_excel_file_path):
+def original_excel_file_uploaded(original_excel_file_path):
     if original_excel_file_path is None:
         return [None] * (1 + MAX_RESPONDENT_COUNT + (MAX_RESPONDENT_COUNT * MAX_ADDRESS_HEADER_COUNT))
 
@@ -229,7 +229,9 @@ def clean_button_clicked(original_excel_file_path, original_excel_data_frame, re
 
 
 def test_button_clicked():
-    original_excel_data_frame = pd.read_excel("Sample Data 1.xlsx")
+    original_excel_file_path = "Sample Data 1.xlsx"
+
+    original_excel_data_frame = pd.read_excel(original_excel_file_path)
 
     respondent_count = 2
 
@@ -283,7 +285,7 @@ def test_button_clicked():
         value="CO APPLICANT FATHER NAME ",
     )
 
-    return [original_excel_data_frame, respondent_count, *name_header_dropdowns, *address_header_counts, *address_header_dropdowns]
+    return [original_excel_file_path, original_excel_data_frame, respondent_count, *name_header_dropdowns, *address_header_counts, *address_header_dropdowns]
 
 
 with gr.Blocks(title="CNICA Excel Cleaner") as app:
@@ -378,8 +380,8 @@ with gr.Blocks(title="CNICA Excel Cleaner") as app:
         interactive=True
     )
 
-    original_excel_file.change(
-        fn=original_excel_file_changed,
+    original_excel_file.upload(
+        fn=original_excel_file_uploaded,
         inputs=original_excel_file,
         outputs=[original_excel_data_frame, *name_header_dropdowns, *address_header_dropdowns]
     )
@@ -420,7 +422,7 @@ with gr.Blocks(title="CNICA Excel Cleaner") as app:
 
         test_button.click(
             fn=test_button_clicked,
-            outputs=[original_excel_data_frame, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
+            outputs=[original_excel_file, original_excel_data_frame, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
         )
 
 app.launch(
