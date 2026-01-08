@@ -134,32 +134,37 @@ def clean_button_clicked(original_excel_file_path, original_excel_data_frame, re
         address_header_count = address_header_counts[i]
         address_header_list = address_headers[i * MAX_ADDRESS_HEADER_COUNT:i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
 
-        respondents = []
+        respondent_strings = []
         respondent_row_indexes = []
 
-        for respondent_row_index, row in original_excel_data_frame.iterrows():
-            name = row.loc[name_header]
+        for row_index, row in original_excel_data_frame.iterrows():
+            name = str(row.loc[name_header]).strip()
 
-            if name is None or len(str(name).strip()) <= 1:
+            if name == "None" or len(name) <= 1:
                 continue
 
             addresses = [row.loc[address_header] for address_header in address_header_list]
 
-            respondent = str(name)
+            respondent_string = str(name)
+
             for address in addresses:
-                if address is not None:
-                    respondent += ", " + str(address)
+                address = str(address).strip()
 
-            respondents.append(respondent)
-            respondent_row_indexes.append(respondent_row_index)
+                if address == "None" or len(address) == 0:
+                    continue
 
-        for j in range(0, len(respondents), GEMINI_MAX_RESPONDENT_COUNT):
-            from_index = j
-            to_index = min(j + GEMINI_MAX_RESPONDENT_COUNT, len(respondents))
+                respondent_string += ", " + str(address)
 
+            respondent_strings.append(respondent_string)
+            respondent_row_indexes.append(row_index)
+
+        respondent_objects = []
+
+        for j in range(0, len(respondent_strings), GEMINI_MAX_RESPONDENT_COUNT):
             gemini_prompt = f"{GEMINI_PROMPT_PREFIX}\n"
-            for k in range(from_index, to_index):
-                gemini_prompt += f"\n{respondents[k]}"
+
+            for k in range(j, min(j + GEMINI_MAX_RESPONDENT_COUNT, len(respondent_strings))):
+                gemini_prompt += f"\n{respondent_strings[k]}"
 
             if DEBUG:
                 logging.info(f"gemini_prompt: {gemini_prompt}")
@@ -174,25 +179,30 @@ def clean_button_clicked(original_excel_file_path, original_excel_data_frame, re
                     }
                 )
 
-                gemini_answer = RespondentList.model_validate_json(gemini_response.text)
-
                 if DEBUG:
-                    logging.info(f"gemini_answer: {gemini_answer}")
+                    logging.info(f"gemini_response: {gemini_response.text}")
 
-                for k in range(from_index, to_index):
-                    respondent_row_index = respondent_row_indexes[k]
-                    gemini_respondent = gemini_answer.respondents[k - from_index]
+                respondent_list_object = RespondentList.model_validate_json(gemini_response.text)
 
-                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Name"] = gemini_respondent.name
-                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 1"] = gemini_respondent.address_line_1
-                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 2"] = gemini_respondent.address_line_2
-                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 3"] = gemini_respondent.address_line_3
-                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} District"] = gemini_respondent.district
-                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} State"] = gemini_respondent.state
-                    cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} PIN Code"] = gemini_respondent.pin_code
+                if len(respondent_list_object.respondents) != min(GEMINI_MAX_RESPONDENT_COUNT, len(respondent_strings) - j):
+                    raise ValueError("No. of respondents in Gemini response does not match with the no. of respondents in the prompt.")
+
+                for respondent_object in respondent_list_object.respondents:
+                    respondent_objects.append(respondent_object)
             except Exception as e:
                 logging.error(e)
 
+        for j in range(len(respondent_objects)):
+            respondent_row_index = respondent_row_indexes[j]
+            respondent_object = respondent_objects[j]
+
+            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Name"] = respondent_object.name
+            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 1"] = respondent_object.address_line_1
+            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 2"] = respondent_object.address_line_2
+            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 3"] = respondent_object.address_line_3
+            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} District"] = respondent_object.district
+            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} State"] = respondent_object.state
+            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} PIN Code"] = respondent_object.pin_code
 
     for i in range(respondent_count):
         name_header = name_headers[i]
