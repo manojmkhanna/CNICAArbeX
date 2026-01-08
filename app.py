@@ -1,7 +1,10 @@
 import logging
 
+from concurrent.futures import ThreadPoolExecutor
+
 import gradio as gr
 import pandas as pd
+
 from google import genai
 from pydantic import BaseModel
 
@@ -19,6 +22,7 @@ GEMINI_PROMPT_PREFIX = "Split the following rows of names and addresses into col
     "Convert everything to Proper case. " \
     "Do not ignore duplicate rows of names and addresses."
 GEMINI_MAX_RESPONDENT_COUNT = 50
+GEMINI_MAX_THREAD_COUNT = 10
 
 
 logging.basicConfig(
@@ -120,22 +124,42 @@ def address_header_dropdown_changed(original_excel_data_frame, address_header):
     return address_header_dropdowns
 
 
+def gemini_process_respondents(gemini_prompt):
+    if DEBUG:
+        logging.info(f"gemini_prompt: {gemini_prompt}")
+
+    try:
+        gemini_client = genai.Client()
+
+        gemini_output = gemini_client.models.generate_content(
+            model=GEMINI_MODEL_NAME,
+            contents=gemini_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": RespondentList.model_json_schema()
+            }
+        )
+
+        if DEBUG:
+            logging.info(f"gemini_output: {gemini_output.text}")
+
+        return RespondentList.model_validate_json(gemini_output.text).respondents
+    except Exception as e:
+        logging.error(e)
+
+
 def clean_button_clicked(original_excel_file_path, original_excel_data_frame, respondent_count, *inputs):
     name_headers = inputs[0:MAX_RESPONDENT_COUNT]
     address_header_counts = inputs[MAX_RESPONDENT_COUNT:2 * MAX_RESPONDENT_COUNT]
-    address_headers = inputs[2 * MAX_RESPONDENT_COUNT:]
+    address_header_groups = inputs[2 * MAX_RESPONDENT_COUNT:]
 
-    gemini_client = genai.Client()
-
-    cleaned_excel_data_frame = pd.DataFrame()
+    respondent_strings = []
+    respondent_indexes = []
 
     for i in range(respondent_count):
         name_header = name_headers[i]
         address_header_count = address_header_counts[i]
-        address_header_list = address_headers[i * MAX_ADDRESS_HEADER_COUNT:i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
-
-        respondent_strings = []
-        respondent_row_indexes = []
+        address_headers = address_header_groups[i * MAX_ADDRESS_HEADER_COUNT:i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
 
         for row_index, row in original_excel_data_frame.iterrows():
             name = str(row.loc[name_header]).strip()
@@ -143,12 +167,10 @@ def clean_button_clicked(original_excel_file_path, original_excel_data_frame, re
             if name == "None" or len(name) <= 1:
                 continue
 
-            addresses = [row.loc[address_header] for address_header in address_header_list]
-
             respondent_string = str(name)
 
-            for address in addresses:
-                address = str(address).strip()
+            for address_header in address_headers:
+                address = str(row.loc[address_header]).strip()
 
                 if address == "None" or len(address) == 0:
                     continue
@@ -156,63 +178,52 @@ def clean_button_clicked(original_excel_file_path, original_excel_data_frame, re
                 respondent_string += ", " + str(address)
 
             respondent_strings.append(respondent_string)
-            respondent_row_indexes.append(row_index)
+            respondent_indexes.append((row_index, i))
 
-        respondent_objects = []
+    gemini_prompts = []
 
-        for j in range(0, len(respondent_strings), GEMINI_MAX_RESPONDENT_COUNT):
-            gemini_prompt = f"{GEMINI_PROMPT_PREFIX}\n"
+    for i in range(0, len(respondent_strings), GEMINI_MAX_RESPONDENT_COUNT):
+        gemini_prompt = f"{GEMINI_PROMPT_PREFIX}\n"
 
-            for k in range(j, min(j + GEMINI_MAX_RESPONDENT_COUNT, len(respondent_strings))):
-                gemini_prompt += f"\n{respondent_strings[k]}"
+        for respondent_string in respondent_strings[i:i + GEMINI_MAX_RESPONDENT_COUNT]:
+            gemini_prompt += f"\n{respondent_string}"
 
-            if DEBUG:
-                logging.info(f"gemini_prompt: {gemini_prompt}")
+        gemini_prompts.append(gemini_prompt)
 
-            try:
-                gemini_response = gemini_client.models.generate_content(
-                    model=GEMINI_MODEL_NAME,
-                    contents=gemini_prompt,
-                    config={
-                        "response_mime_type": "application/json",
-                        "response_json_schema": RespondentList.model_json_schema()
-                    }
-                )
+    gemini_outputs = []
 
-                if DEBUG:
-                    logging.info(f"gemini_response: {gemini_response.text}")
+    with ThreadPoolExecutor(max_workers=GEMINI_MAX_THREAD_COUNT) as executor:
+        for gemini_output in executor.map(gemini_process_respondents, gemini_prompts):
+            gemini_outputs.append(gemini_output)
 
-                respondent_list_object = RespondentList.model_validate_json(gemini_response.text)
+    respondent_objects = []
 
-                if len(respondent_list_object.respondents) != min(GEMINI_MAX_RESPONDENT_COUNT, len(respondent_strings) - j):
-                    raise ValueError("No. of respondents in Gemini response does not match with the no. of respondents in the prompt.")
+    for gemini_output in gemini_outputs:
+        respondent_objects += gemini_output
 
-                for respondent_object in respondent_list_object.respondents:
-                    respondent_objects.append(respondent_object)
-            except Exception as e:
-                logging.error(e)
+    cleaned_excel_data_frame = pd.DataFrame()
 
-        for j in range(len(respondent_objects)):
-            respondent_row_index = respondent_row_indexes[j]
-            respondent_object = respondent_objects[j]
+    for i in range(len(respondent_objects)):
+        respondent_index = respondent_indexes[i]
+        respondent_object = respondent_objects[i]
 
-            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Name"] = respondent_object.name
-            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 1"] = respondent_object.address_line_1
-            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 2"] = respondent_object.address_line_2
-            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} Address Line 3"] = respondent_object.address_line_3
-            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} District"] = respondent_object.district
-            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} State"] = respondent_object.state
-            cleaned_excel_data_frame.loc[respondent_row_index, f"Respondent {i + 1} PIN Code"] = respondent_object.pin_code
+        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Name"] = respondent_object.name
+        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Address Line 1"] = respondent_object.address_line_1
+        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Address Line 2"] = respondent_object.address_line_2
+        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Address Line 3"] = respondent_object.address_line_3
+        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} District"] = respondent_object.district
+        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} State"] = respondent_object.state
+        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} PIN Code"] = respondent_object.pin_code
 
     for i in range(respondent_count):
         name_header = name_headers[i]
         address_header_count = address_header_counts[i]
-        address_header_list = address_headers[i * MAX_ADDRESS_HEADER_COUNT:i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
+        address_headers = address_header_groups[i * MAX_ADDRESS_HEADER_COUNT:i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
 
         other_headers = []
 
         for column_index, column_header in enumerate(original_excel_data_frame.columns):
-            if column_header != name_header and column_header not in address_header_list:
+            if column_header != name_header and column_header not in address_headers:
                 other_headers.append(column_header)
 
         cleaned_excel_data_frame[other_headers] = original_excel_data_frame[other_headers]
@@ -229,7 +240,7 @@ def clean_button_clicked(original_excel_file_path, original_excel_data_frame, re
 
 
 def test_button_clicked():
-    original_excel_file_path = "Sample Data 1.xlsx"
+    original_excel_file_path = "Sample Data 3.xlsx"
 
     original_excel_data_frame = pd.read_excel(original_excel_file_path)
 
