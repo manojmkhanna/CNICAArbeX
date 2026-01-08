@@ -6,9 +6,9 @@ from google import genai
 from pydantic import BaseModel
 
 DEBUG = True
-MAX_RESPONDENT_COUNT = 10
+MAX_RESPONDENT_COUNT = 20
 MAX_ADDRESS_HEADER_COUNT = 10
-GEMINI_MODEL_NAME = "gemini-2.5-flash"
+GEMINI_MODEL_NAME = "gemini-3-flash-preview"
 GEMINI_PROMPT_PREFIX = "Split the following rows of names and addresses into columns such as Recipient Name/Entity Name, Address Line 1/Care of Name, Address Line 2, Address Line 3, District, State and PIN Code. " \
     "Add salutations like Mr., Mrs., Ms. or M/s. to Name and Care of Name if missing. " \
     "Add prefixes like s/o, d/o, f/o, m/o, h/o, w/o or c/o to Care of Name if missing. " \
@@ -18,7 +18,7 @@ GEMINI_PROMPT_PREFIX = "Split the following rows of names and addresses into col
     "Remove redundancy in an Address if necessary. " \
     "Convert everything to Proper case. " \
     "Do not ignore duplicate rows of names and addresses."
-GEMINI_MAX_RESPONDENT_COUNT = 100
+GEMINI_MAX_RESPONDENT_COUNT = 50
 
 
 logging.basicConfig(
