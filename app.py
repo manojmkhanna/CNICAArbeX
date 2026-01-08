@@ -8,19 +8,18 @@ import pandas as pd
 from google import genai
 from pydantic import BaseModel
 
-DEBUG = True
+DEBUG = False
 MAX_RESPONDENT_COUNT = 20
 MAX_ADDRESS_HEADER_COUNT = 10
 GEMINI_MODEL_NAME = "gemini-3-flash-preview"
-GEMINI_PROMPT_PREFIX = "Split the following rows of names and addresses into columns such as Recipient Name/Entity Name, Address Line 1/Care of Name, Address Line 2, Address Line 3, District, State and PIN Code. " \
-    "Add salutations like Mr., Mrs., Ms. or M/s. to Name and Care of Name if missing. " \
-    "Add prefixes like s/o, d/o, f/o, m/o, h/o, w/o or c/o to Care of Name if missing. " \
-    "Add punctuations to initials in Name and Care of Name if missing. " \
-    "Correct spelling mistakes and punctuations in an Address if necessary. " \
-    "Correct an incomplete Address if necessary. " \
+GEMINI_PROMPT_PREFIX = "Split the following rows of Names and Addresses into columns such as Recipient Name/Entity Name, Address Line 1/Care of Name, Address Line 2, Address Line 3, District, State and PIN Code. " \
+    "Do not ignore duplicate rows of Names and Addresses. " \
+    "Add or fix salutations like Mr., Mrs., Ms. or M/s. in Name and Care of Name. " \
+    "Add or fix prefixes like S/o, D/o, F/o, M/o, H/o, W/o or C/o in Care of Name. " \
+    "Fix spelling mistakes and punctuations if necessary. " \
+    "Fix an incomplete Address if necessary. " \
     "Remove redundancy in an Address if necessary. " \
-    "Convert everything to Proper case. " \
-    "Do not ignore duplicate rows of names and addresses."
+    "Convert to Proper Case if necessary."
 GEMINI_MAX_RESPONDENT_COUNT = 50
 GEMINI_MAX_THREAD_COUNT = 10
 
@@ -240,7 +239,7 @@ def clean_button_clicked(original_excel_file_path, original_excel_data_frame, re
 
 
 def test_button_clicked():
-    original_excel_file_path = "Sample Data 3.xlsx"
+    original_excel_file_path = "Sample Data 1.xlsx"
 
     original_excel_data_frame = pd.read_excel(original_excel_file_path)
 
