@@ -147,7 +147,7 @@ def gemini_process_respondents(gemini_prompt):
         logging.error(e)
 
 
-def clean_button_clicked(original_excel_file_path, original_excel_data_frame, respondent_count, *inputs):
+def process_button_clicked(original_excel_file_path, original_excel_data_frame, respondent_count, *inputs):
     name_headers = inputs[0:MAX_RESPONDENT_COUNT]
     address_header_counts = inputs[MAX_RESPONDENT_COUNT:2 * MAX_RESPONDENT_COUNT]
     address_header_groups = inputs[2 * MAX_RESPONDENT_COUNT:]
@@ -200,19 +200,19 @@ def clean_button_clicked(original_excel_file_path, original_excel_data_frame, re
     for gemini_output in gemini_outputs:
         respondent_objects += gemini_output
 
-    cleaned_excel_data_frame = pd.DataFrame()
+    processed_excel_data_frame = pd.DataFrame()
 
     for i in range(len(respondent_objects)):
         respondent_index = respondent_indexes[i]
         respondent_object = respondent_objects[i]
 
-        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Name"] = respondent_object.name
-        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Address Line 1"] = respondent_object.address_line_1
-        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Address Line 2"] = respondent_object.address_line_2
-        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Address Line 3"] = respondent_object.address_line_3
-        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} District"] = respondent_object.district
-        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} State"] = respondent_object.state
-        cleaned_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} PIN Code"] = respondent_object.pin_code
+        processed_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Name"] = respondent_object.name
+        processed_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Address Line 1"] = respondent_object.address_line_1
+        processed_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Address Line 2"] = respondent_object.address_line_2
+        processed_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} Address Line 3"] = respondent_object.address_line_3
+        processed_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} District"] = respondent_object.district
+        processed_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} State"] = respondent_object.state
+        processed_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} PIN Code"] = respondent_object.pin_code
 
     for i in range(respondent_count):
         name_header = name_headers[i]
@@ -225,17 +225,17 @@ def clean_button_clicked(original_excel_file_path, original_excel_data_frame, re
             if column_header != name_header and column_header not in address_headers:
                 other_headers.append(column_header)
 
-        cleaned_excel_data_frame[other_headers] = original_excel_data_frame[other_headers]
+        processed_excel_data_frame[other_headers] = original_excel_data_frame[other_headers]
 
-    cleaned_excel_file_path = original_excel_file_path.name.replace(".xlsx", " - Cleaned.xlsx")
+    processed_excel_file_path = original_excel_file_path.name.replace(".xlsx", " - Processed.xlsx")
 
-    cleaned_excel_data_frame.to_excel(cleaned_excel_file_path, index=False)
+    processed_excel_data_frame.to_excel(processed_excel_file_path, index=False)
 
     download_button = gr.DownloadButton(
-        value=cleaned_excel_file_path
+        value=processed_excel_file_path
     )
 
-    return [cleaned_excel_data_frame, download_button]
+    return [processed_excel_data_frame, download_button]
 
 
 def test_button_clicked():
@@ -298,8 +298,8 @@ def test_button_clicked():
     return [original_excel_file_path, original_excel_data_frame, respondent_count, *name_header_dropdowns, *address_header_counts, *address_header_dropdowns]
 
 
-with gr.Blocks(title="CNICA Excel Cleaner") as app:
-    gr.Markdown("# CNICA Excel Cleaner #")
+with gr.Blocks(title="CNICA ArbeX") as app:
+    gr.Markdown("# CNICA ArbeX #")
 
     gr.Markdown("### Step 1: Upload Excel File ###")
 
@@ -368,16 +368,16 @@ with gr.Blocks(title="CNICA Excel Cleaner") as app:
 
         respondent_tabs.append(respondent_tab)
 
-    gr.Markdown("### Step 4: Clean Excel File ###")
+    gr.Markdown("### Step 4: Process Excel File ###")
 
-    clean_button = gr.Button(
-        value="Clean",
+    process_button = gr.Button(
+        value="Process",
         variant="primary",
         interactive=True
     )
 
-    cleaned_excel_data_frame = gr.DataFrame(
-        label="Cleaned Excel data",
+    processed_excel_data_frame = gr.DataFrame(
+        label="Processed Excel data",
         headers=[""],
         interactive=False
     )
@@ -418,10 +418,10 @@ with gr.Blocks(title="CNICA Excel Cleaner") as app:
             outputs=address_header_dropdowns[i * 10 + 1:i * 10 + 10]
         )
 
-    clean_button.click(
-        fn=clean_button_clicked,
+    process_button.click(
+        fn=process_button_clicked,
         inputs=[original_excel_file, original_excel_data_frame, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
-        outputs=[cleaned_excel_data_frame, download_button]
+        outputs=[processed_excel_data_frame, download_button]
     )
 
     if DEBUG:
