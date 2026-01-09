@@ -1,5 +1,6 @@
 .idea
 .vscode
 env
+install.txt
 pyproject.toml
 *.xlsx

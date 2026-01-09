@@ -1,5 +1,0 @@
-git clone https://github.com/manojmkhanna/cnica-excel-cleaner
-cd .\cnica-excel-cleaner
-conda create -p env python
-conda activate .\env
-pip install -r .\requirements.txt
