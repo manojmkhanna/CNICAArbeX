@@ -49,18 +49,27 @@ RespondentList.model_rebuild()
 
 def original_excel_file_uploaded(original_excel_file_path):
     if original_excel_file_path is None:
-        return [None] * (1 + MAX_RESPONDENT_COUNT + (MAX_RESPONDENT_COUNT * MAX_ADDRESS_HEADER_COUNT))
+        return [None] * (2 + MAX_RESPONDENT_COUNT + (MAX_RESPONDENT_COUNT * MAX_ADDRESS_HEADER_COUNT))
 
-    original_excel_data_frame = pd.read_excel(original_excel_file_path)
+    excel_file = pd.ExcelFile(original_excel_file_path)
 
-    original_excel_column_headers = original_excel_data_frame.columns.tolist()
+    excel_sheet_names = excel_file.sheet_names
+
+    original_excel_sheet_name_dropdown = gr.Dropdown(
+        choices=excel_sheet_names,
+        value=excel_sheet_names[0]
+    )
+
+    original_excel_data_frame = excel_file.parse(excel_sheet_names[0])
+
+    excel_column_headers = original_excel_data_frame.columns.tolist()
 
     name_header_dropdowns = []
 
     for i in range(MAX_RESPONDENT_COUNT):
         name_header_dropdown = gr.Dropdown(
-            choices=original_excel_column_headers,
-            value=original_excel_column_headers[0]
+            choices=excel_column_headers,
+            value=excel_column_headers[0]
         )
 
         name_header_dropdowns.append(name_header_dropdown)
@@ -70,8 +79,42 @@ def original_excel_file_uploaded(original_excel_file_path):
     for i in range(MAX_RESPONDENT_COUNT):
         for j in range(MAX_ADDRESS_HEADER_COUNT):
             address_header_dropdown = gr.Dropdown(
-                choices=original_excel_column_headers,
-                value=original_excel_column_headers[0]
+                choices=excel_column_headers,
+                value=excel_column_headers[0]
+            )
+
+            address_header_dropdowns.append(address_header_dropdown)
+
+    return [original_excel_sheet_name_dropdown, original_excel_data_frame] + name_header_dropdowns + address_header_dropdowns
+
+
+def original_excel_sheet_name_dropdown_changed(original_excel_file_path, original_excel_sheet_name):
+    if original_excel_file_path is None or original_excel_sheet_name is None:
+        return [None] * (1 + MAX_RESPONDENT_COUNT + (MAX_RESPONDENT_COUNT * MAX_ADDRESS_HEADER_COUNT))
+
+    excel_file = pd.ExcelFile(original_excel_file_path)
+
+    original_excel_data_frame = excel_file.parse(original_excel_sheet_name)
+
+    excel_column_headers = original_excel_data_frame.columns.tolist()
+
+    name_header_dropdowns = []
+
+    for i in range(MAX_RESPONDENT_COUNT):
+        name_header_dropdown = gr.Dropdown(
+            choices=excel_column_headers,
+            value=excel_column_headers[0]
+        )
+
+        name_header_dropdowns.append(name_header_dropdown)
+
+    address_header_dropdowns = []
+
+    for i in range(MAX_RESPONDENT_COUNT):
+        for j in range(MAX_ADDRESS_HEADER_COUNT):
+            address_header_dropdown = gr.Dropdown(
+                choices=excel_column_headers,
+                value=excel_column_headers[0]
             )
 
             address_header_dropdowns.append(address_header_dropdown)
@@ -148,6 +191,9 @@ def gemini_process_respondents(gemini_prompt):
 
 
 def process_button_clicked(original_excel_file_path, original_excel_data_frame, respondent_count, *inputs):
+    if original_excel_file_path is None or original_excel_data_frame is None or respondent_count is None:
+        return [None, None]
+
     name_headers = inputs[0:MAX_RESPONDENT_COUNT]
     address_header_counts = inputs[MAX_RESPONDENT_COUNT:2 * MAX_RESPONDENT_COUNT]
     address_header_groups = inputs[2 * MAX_RESPONDENT_COUNT:]
@@ -309,6 +355,11 @@ with gr.Blocks(title="CNICA ArbeX") as app:
         interactive=True
     )
 
+    original_excel_sheet_name_dropdown = gr.Dropdown(
+        label="Excel sheet",
+        interactive=True
+    )
+
     original_excel_data_frame = gr.DataFrame(
         label="Excel data",
         headers=[""],
@@ -393,6 +444,12 @@ with gr.Blocks(title="CNICA ArbeX") as app:
     original_excel_file.upload(
         fn=original_excel_file_uploaded,
         inputs=original_excel_file,
+        outputs=[original_excel_sheet_name_dropdown, original_excel_data_frame, *name_header_dropdowns, *address_header_dropdowns]
+    )
+
+    original_excel_sheet_name_dropdown.input(
+        fn=original_excel_sheet_name_dropdown_changed,
+        inputs=[original_excel_file, original_excel_sheet_name_dropdown],
         outputs=[original_excel_data_frame, *name_header_dropdowns, *address_header_dropdowns]
     )
 
@@ -412,7 +469,7 @@ with gr.Blocks(title="CNICA ArbeX") as app:
 
     for i in range(MAX_RESPONDENT_COUNT):
         address_header_dropdown = address_header_dropdowns[i * 10]
-        address_header_dropdown.change(
+        address_header_dropdown.input(
             fn=address_header_dropdown_changed,
             inputs=[original_excel_data_frame, address_header_dropdown],
             outputs=address_header_dropdowns[i * 10 + 1:i * 10 + 10]
