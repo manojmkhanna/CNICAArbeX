@@ -47,6 +47,18 @@ class RespondentList(BaseModel):
 RespondentList.model_rebuild()
 
 
+def str_trim_and_none(value):
+    if type(value) is not str:
+        return value
+
+    value = value.strip()
+
+    if value != "":
+        return value
+
+    return None
+
+
 def original_excel_file_uploaded(original_excel_file_path):
     if original_excel_file_path is None:
         return [None] * (2 + MAX_RESPONDENT_COUNT + (MAX_RESPONDENT_COUNT * MAX_ADDRESS_HEADER_COUNT))
@@ -61,8 +73,16 @@ def original_excel_file_uploaded(original_excel_file_path):
     )
 
     original_excel_data_frame = excel_file.parse(excel_sheet_names[0])
+    original_excel_data_frame = original_excel_data_frame.map(lambda x: str_trim_and_none(x))
+    original_excel_data_frame.dropna(how="all", inplace=True)
+    original_excel_data_frame.fillna("", inplace=True)
 
     excel_column_headers = original_excel_data_frame.columns.tolist()
+
+    arbitrator_name_header_dropdown = gr.Dropdown(
+        choices=["", *excel_column_headers],
+        value=""
+    )
 
     name_header_dropdowns = []
 
@@ -85,7 +105,7 @@ def original_excel_file_uploaded(original_excel_file_path):
 
             address_header_dropdowns.append(address_header_dropdown)
 
-    return [original_excel_sheet_name_dropdown, original_excel_data_frame] + name_header_dropdowns + address_header_dropdowns
+    return [original_excel_sheet_name_dropdown, original_excel_data_frame, arbitrator_name_header_dropdown] + name_header_dropdowns + address_header_dropdowns
 
 
 def original_excel_sheet_name_dropdown_changed(original_excel_file_path, original_excel_sheet_name):
@@ -95,8 +115,16 @@ def original_excel_sheet_name_dropdown_changed(original_excel_file_path, origina
     excel_file = pd.ExcelFile(original_excel_file_path)
 
     original_excel_data_frame = excel_file.parse(original_excel_sheet_name)
+    original_excel_data_frame = original_excel_data_frame.map(lambda x: str_trim_and_none(x))
+    original_excel_data_frame.dropna(how="all", inplace=True)
+    original_excel_data_frame.fillna("", inplace=True)
 
     excel_column_headers = original_excel_data_frame.columns.tolist()
+
+    arbitrator_name_header_dropdown = gr.Dropdown(
+        choices=["", *excel_column_headers],
+        value=""
+    )
 
     name_header_dropdowns = []
 
@@ -119,7 +147,7 @@ def original_excel_sheet_name_dropdown_changed(original_excel_file_path, origina
 
             address_header_dropdowns.append(address_header_dropdown)
 
-    return [original_excel_data_frame] + name_header_dropdowns + address_header_dropdowns
+    return [original_excel_data_frame, arbitrator_name_header_dropdown] + name_header_dropdowns + address_header_dropdowns
 
 
 def respondent_slider_changed(respondent_count):
@@ -268,20 +296,28 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
         processed_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} State"] = respondent_object.state
         processed_excel_data_frame.loc[respondent_index[0], f"Respondent {respondent_index[1] + 1} PIN Code"] = respondent_object.pin_code
 
+    other_headers = original_excel_data_frame.columns.tolist()
+
     for i in range(respondent_count):
         name_header = name_headers[i]
         address_header_count = address_header_counts[i]
         address_headers = address_header_groups[i * MAX_ADDRESS_HEADER_COUNT:i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
 
-        other_headers = []
+        other_headers.remove(name_header)
 
-        for column_index, column_header in enumerate(original_excel_data_frame.columns):
-            if column_header != name_header and column_header not in address_headers:
-                other_headers.append(column_header)
+        for address_header in address_headers:
+            other_headers.remove(address_header)
 
-        processed_excel_data_frame[other_headers] = original_excel_data_frame[other_headers]
+    processed_excel_data_frame[other_headers] = original_excel_data_frame[other_headers]
 
-    processed_excel_data_frame = processed_excel_data_frame.sort_values(by=[arbitrator_name_header, "No. of Respondents"])
+    sort_by_headers = []
+
+    if arbitrator_name_header != "":
+        sort_by_headers.append(arbitrator_name_header)
+
+    sort_by_headers.append("No. of Respondents")
+
+    processed_excel_data_frame = processed_excel_data_frame.sort_values(by=sort_by_headers)
 
     processed_excel_file_path = original_excel_file_path.name.replace(".xlsx", " - Processed.xlsx")
 
@@ -307,11 +343,14 @@ def test_button_clicked():
     )
 
     original_excel_data_frame = excel_file.parse(excel_sheet_names[0])
+    original_excel_data_frame = original_excel_data_frame.map(lambda x: str_trim_and_none(x))
+    original_excel_data_frame.dropna(how="all", inplace=True)
+    original_excel_data_frame.fillna("", inplace=True)
 
     excel_column_headers = original_excel_data_frame.columns.tolist()
 
     arbitrator_name_header_dropdown = gr.Dropdown(
-        choices=excel_column_headers,
+        choices=["", *excel_column_headers],
         value="ARB NAME"
     )
 
@@ -475,13 +514,13 @@ with gr.Blocks(title="CNICA ArbeX") as app:
     original_excel_file.upload(
         fn=original_excel_file_uploaded,
         inputs=original_excel_file,
-        outputs=[original_excel_sheet_name_dropdown, original_excel_data_frame, *name_header_dropdowns, *address_header_dropdowns]
+        outputs=[original_excel_sheet_name_dropdown, original_excel_data_frame, arbitrator_name_header_dropdown, *name_header_dropdowns, *address_header_dropdowns]
     )
 
     original_excel_sheet_name_dropdown.input(
         fn=original_excel_sheet_name_dropdown_changed,
         inputs=[original_excel_file, original_excel_sheet_name_dropdown],
-        outputs=[original_excel_data_frame, *name_header_dropdowns, *address_header_dropdowns]
+        outputs=[original_excel_data_frame, arbitrator_name_header_dropdown, *name_header_dropdowns, *address_header_dropdowns]
     )
 
     respondent_slider.change(
