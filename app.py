@@ -287,17 +287,31 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
 def test_button_clicked():
     original_excel_file_path = "Sample Data 1.xlsx"
 
-    original_excel_data_frame = pd.read_excel(original_excel_file_path)
+    excel_file = pd.ExcelFile(original_excel_file_path)
+
+    excel_sheet_names = excel_file.sheet_names
+
+    original_excel_sheet_name_dropdown = gr.Dropdown(
+        choices=excel_sheet_names,
+        value=excel_sheet_names[0]
+    )
+
+    original_excel_data_frame = excel_file.parse(excel_sheet_names[0])
+
+    excel_column_headers = original_excel_data_frame.columns.tolist()
+
+    arbitrator_name_header_dropdown = gr.Dropdown(
+        choices=excel_column_headers,
+        value="ARB NAME"
+    )
 
     respondent_count = 2
-
-    original_excel_column_headers = original_excel_data_frame.columns.tolist()
 
     name_header_dropdowns = []
 
     for i in range(MAX_RESPONDENT_COUNT):
         name_header_dropdown = gr.Dropdown(
-            choices=original_excel_column_headers
+            choices=excel_column_headers
         )
 
         name_header_dropdowns.append(name_header_dropdown)
@@ -312,36 +326,36 @@ def test_button_clicked():
     for i in range(MAX_RESPONDENT_COUNT):
         for j in range(MAX_ADDRESS_HEADER_COUNT):
             address_header_dropdown = gr.Dropdown(
-                choices=original_excel_column_headers
+                choices=excel_column_headers
             )
 
             address_header_dropdowns.append(address_header_dropdown)
 
     name_header_dropdowns[0] = gr.Dropdown(
-        choices=original_excel_column_headers,
+        choices=excel_column_headers,
         value="APPLICANT NAME",
     )
 
     address_header_counts[0] = 9
 
     address_header_dropdowns[0] = gr.Dropdown(
-        choices=original_excel_column_headers,
+        choices=excel_column_headers,
         value="APPLICANT FATHER NAME ",
     )
 
     name_header_dropdowns[1] = gr.Dropdown(
-        choices=original_excel_column_headers,
+        choices=excel_column_headers,
         value="CO-APPLICANT NAME",
     )
 
     address_header_counts[1] = 9
 
     address_header_dropdowns[10] = gr.Dropdown(
-        choices=original_excel_column_headers,
+        choices=excel_column_headers,
         value="CO APPLICANT FATHER NAME ",
     )
 
-    return [original_excel_file_path, original_excel_data_frame, respondent_count, *name_header_dropdowns, *address_header_counts, *address_header_dropdowns]
+    return [original_excel_file_path, original_excel_sheet_name_dropdown, original_excel_data_frame, arbitrator_name_header_dropdown, respondent_count, *name_header_dropdowns, *address_header_counts, *address_header_dropdowns]
 
 
 with gr.Blocks(title="CNICA ArbeX") as app:
@@ -469,7 +483,7 @@ with gr.Blocks(title="CNICA ArbeX") as app:
 
     for i in range(MAX_RESPONDENT_COUNT):
         address_header_dropdown = address_header_dropdowns[i * 10]
-        address_header_dropdown.input(
+        address_header_dropdown.change(
             fn=address_header_dropdown_changed,
             inputs=[original_excel_data_frame, address_header_dropdown],
             outputs=address_header_dropdowns[i * 10 + 1:i * 10 + 10]
@@ -489,7 +503,7 @@ with gr.Blocks(title="CNICA ArbeX") as app:
 
         test_button.click(
             fn=test_button_clicked,
-            outputs=[original_excel_file, original_excel_data_frame, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
+            outputs=[original_excel_file, original_excel_sheet_name_dropdown, original_excel_data_frame, arbitrator_name_header_dropdown, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
         )
 
 app.launch(
