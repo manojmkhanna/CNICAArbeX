@@ -8,7 +8,7 @@ import pandas as pd
 from google import genai
 from pydantic import BaseModel
 
-DEBUG = False
+DEBUG = True
 MAX_RESPONDENT_COUNT = 20
 MAX_ADDRESS_HEADER_COUNT = 10
 GEMINI_MODEL_NAME = "gemini-3-flash-preview"
@@ -190,7 +190,7 @@ def gemini_process_respondents(gemini_prompt):
         logging.error(e)
 
 
-def process_button_clicked(original_excel_file_path, original_excel_data_frame, respondent_count, *inputs):
+def process_button_clicked(original_excel_file_path, original_excel_data_frame, arbitrator_name_header, respondent_count, *inputs):
     if original_excel_file_path is None or original_excel_data_frame is None or respondent_count is None:
         return [None, None]
 
@@ -248,6 +248,14 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
 
     processed_excel_data_frame = pd.DataFrame()
 
+    respondent_number_dict = {}
+
+    for respondent_index in respondent_indexes:
+        respondent_number_dict[respondent_index[0]] = respondent_number_dict.get(respondent_index[0], 0) + 1
+
+    for key, value in respondent_number_dict.items():
+        processed_excel_data_frame.loc[key, "No. of Respondents"] = value
+
     for i in range(len(respondent_objects)):
         respondent_index = respondent_indexes[i]
         respondent_object = respondent_objects[i]
@@ -272,6 +280,8 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
                 other_headers.append(column_header)
 
         processed_excel_data_frame[other_headers] = original_excel_data_frame[other_headers]
+
+    processed_excel_data_frame = processed_excel_data_frame.sort_values(by=[arbitrator_name_header, "No. of Respondents"])
 
     processed_excel_file_path = original_excel_file_path.name.replace(".xlsx", " - Processed.xlsx")
 
@@ -380,7 +390,14 @@ with gr.Blocks(title="CNICA ArbeX") as app:
         interactive=False
     )
 
-    gr.Markdown("### Step 2: Select No. of Respondents ###")
+    gr.Markdown("### Step 2: Select Arbitrator's Name column header (Optional) ###")
+
+    arbitrator_name_header_dropdown = gr.Dropdown(
+        label="Arbitrator's Name column header",
+        interactive=True
+    )
+
+    gr.Markdown("### Step 3: Select No. of Respondents ###")
 
     respondent_slider = gr.Slider(
         label="No. of Respondents",
@@ -390,7 +407,7 @@ with gr.Blocks(title="CNICA ArbeX") as app:
         interactive=True
     )
 
-    gr.Markdown("### Step 3: Select Respondent's Name and Address Column Headers ###")
+    gr.Markdown("### Step 4: Select Respondent's Name and Address column headers ###")
 
     respondent_tabs = []
     name_header_dropdowns = []
@@ -433,7 +450,7 @@ with gr.Blocks(title="CNICA ArbeX") as app:
 
         respondent_tabs.append(respondent_tab)
 
-    gr.Markdown("### Step 4: Process Excel File ###")
+    gr.Markdown("### Step 5: Process Excel File ###")
 
     process_button = gr.Button(
         value="Process",
@@ -447,7 +464,7 @@ with gr.Blocks(title="CNICA ArbeX") as app:
         interactive=False
     )
 
-    gr.Markdown("### Step 5: Download Excel File ###")
+    gr.Markdown("### Step 6: Download Excel File ###")
 
     download_button = gr.DownloadButton(
         value="Download",
@@ -491,7 +508,7 @@ with gr.Blocks(title="CNICA ArbeX") as app:
 
     process_button.click(
         fn=process_button_clicked,
-        inputs=[original_excel_file, original_excel_data_frame, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
+        inputs=[original_excel_file, original_excel_data_frame, arbitrator_name_header_dropdown, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
         outputs=[processed_excel_data_frame, download_button]
     )
 
