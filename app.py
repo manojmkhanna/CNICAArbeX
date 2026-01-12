@@ -8,18 +8,19 @@ import pandas as pd
 from google import genai
 from pydantic import BaseModel
 
-DEBUG = True
+DEBUG = False
 MAX_RESPONDENT_COUNT = 20
 MAX_ADDRESS_HEADER_COUNT = 10
 GEMINI_MODEL_NAME = "gemini-3-flash-preview"
 GEMINI_PROMPT_PREFIX = "Split the following rows of Names and Addresses into columns such as Recipient Name/Entity Name, Address Line 1/Care of Name, Address Line 2, Address Line 3, District, State and PIN Code. " \
     "Do not ignore duplicate rows of Names and Addresses. " \
-    "Add or fix salutations like Mr., Mrs., Ms. or M/s. in Name and Care of Name. " \
-    "Add or fix prefixes like S/o, D/o, F/o, M/o, H/o, W/o or C/o in Care of Name. " \
-    "Fix spelling mistakes and punctuations if necessary. " \
-    "Fix an incomplete Address if necessary. " \
-    "Remove redundancy in an Address if necessary. " \
-    "Convert to Proper Case if necessary."
+    "Add or fix titles like Mr., Ms., Mrs. or M/s. in Names, Care of Names and Addresses. Use the title Mrs. for female Names if Care of Names has the prefix W/o. " \
+    "Add or fix prefixes like S/o, D/o, F/o, M/o, H/o, W/o or C/o in Care of Names. " \
+    "Add periods to initials in Names and Care of Names. " \
+    "Fix spelling mistakes and punctuations in Names, Care of Names and Addresses if necessary. " \
+    "Fix incomplete Addresses if necessary. " \
+    "Remove redundancy in Addresses if necessary. Address Line 2 and Address Line 3 can be empty. " \
+    "Convert Names, Care of Names and Addresses to Proper Case if necessary."
 GEMINI_MAX_RESPONDENT_COUNT = 50
 GEMINI_MAX_THREAD_COUNT = 10
 
@@ -242,13 +243,20 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
 
             respondent_string = str(name)
 
+            joined_address = ""
+
             for address_header in address_headers:
                 address = str(row.loc[address_header]).strip()
 
                 if address == "None" or len(address) == 0:
                     continue
 
-                respondent_string += ", " + str(address)
+                joined_address += ", " + str(address)
+
+            if joined_address == "":
+                continue
+
+            respondent_string += joined_address
 
             respondent_strings.append(respondent_string)
             respondent_indexes.append((row_index, i))
@@ -310,7 +318,9 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
             if address_header in other_headers:
                 other_headers.remove(address_header)
 
-    processed_excel_data_frame[other_headers] = original_excel_data_frame[other_headers]
+    processed_excel_data_frame = pd.concat([processed_excel_data_frame, original_excel_data_frame[other_headers]], axis=1)
+
+    processed_excel_data_frame.fillna("", inplace=True)
 
     sort_by_headers = []
 

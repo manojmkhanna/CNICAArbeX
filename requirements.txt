@@ -1,5 +1,6 @@
 gradio
 pandas
+xlrd
 openpyxl
 google-genai
 pydantic
