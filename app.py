@@ -303,10 +303,12 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
         address_header_count = address_header_counts[i]
         address_headers = address_header_groups[i * MAX_ADDRESS_HEADER_COUNT:i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
 
-        other_headers.remove(name_header)
+        if name_header in other_headers:
+            other_headers.remove(name_header)
 
         for address_header in address_headers:
-            other_headers.remove(address_header)
+            if address_header in other_headers:
+                other_headers.remove(address_header)
 
     processed_excel_data_frame[other_headers] = original_excel_data_frame[other_headers]
 
