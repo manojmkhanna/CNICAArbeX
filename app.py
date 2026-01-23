@@ -282,7 +282,7 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
         for row_index, row in original_excel_data_frame.iterrows():
             name = str(row.loc[name_header]).strip()
 
-            if name == "None" or name == "" or name == "-":
+            if name == "None" or name == "" or name == "-" or str.lower(name) == "na" or str.lower(name) == "n/a":
                 continue
 
             respondent_string = str(name)
@@ -292,7 +292,7 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
             for address_header in address_headers:
                 address = str(row.loc[address_header]).strip()
 
-                if address == "None" or address == "" or address == "-":
+                if address == "None" or address == "" or address == "-" or str.lower(name) == "na" or str.lower(name) == "n/a":
                     continue
 
                 joined_address += ", " + str(address)
