@@ -394,6 +394,9 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
 
     processed_excel_data_frame.fillna("", inplace=True)
 
+    processed_excel_data_frame["No. of Respondents"] = pd.to_numeric(processed_excel_data_frame["No. of Respondents"], "coerce")
+    processed_excel_data_frame["No. of Respondents"].fillna(0, inplace=True)
+
     sort_by_headers = []
 
     if arbitrator_name_header != "":
