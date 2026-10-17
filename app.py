@@ -59,6 +59,15 @@ def str_trim_and_none(value):
     return None
 
 
+def is_empty_value(value):
+    if value is None:
+        return True
+
+    value = str(value).strip()
+
+    return value == "" or value == "None" or value == "-" or str.lower(value) == "na" or str.lower(value) == "n/a"
+
+
 def original_excel_file_uploaded(original_excel_file_path):
     if original_excel_file_path is None:
         return [None] * (6 + MAX_RESPONDENT_COUNT + (MAX_RESPONDENT_COUNT * MAX_ADDRESS_HEADER_COUNT))
@@ -179,7 +188,7 @@ def address_header_dropdown_changed(original_excel_data_frame, address_header):
     return address_header_dropdowns
 
 
-def gemini_process_respondents(gemini_prompt):
+def gemini_process_records(gemini_prompt):
     if DEBUG:
         logging.info(f"gemini_prompt: {gemini_prompt}")
 
@@ -194,6 +203,101 @@ def gemini_process_respondents(gemini_prompt):
         return RespondentList.model_validate_json(gemini_output.text).respondents
     except Exception as e:
         logging.error(e)
+
+        return None
+
+
+def clean_arbitrators(original_excel_data_frame, arbitrator_name_header, arbitrator_address_header):
+    if arbitrator_name_header == "":
+        return None, None
+
+    arbitrator_name_map = {}
+    arbitrator_address_map = {}
+
+    arbitrator_keys = []
+    arbitrator_rows = {}
+
+    for row_index, row in original_excel_data_frame.iterrows():
+        name = "" if is_empty_value(row.loc[arbitrator_name_header]) else str(row.loc[arbitrator_name_header]).strip()
+
+        address = ""
+        if arbitrator_address_header != "" and not is_empty_value(row.loc[arbitrator_address_header]):
+            address = str(row.loc[arbitrator_address_header]).strip()
+
+        if name == "" and address == "":
+            continue
+
+        key = (name, address)
+
+        if key not in arbitrator_rows:
+            arbitrator_keys.append(key)
+            arbitrator_rows[key] = []
+
+        arbitrator_rows[key].append(row_index)
+
+    arbitrator_strings = []
+
+    for name, address in arbitrator_keys:
+        if name != "" and address != "":
+            arbitrator_string = f"{name}, {address}"
+        else:
+            arbitrator_string = name if name != "" else address
+
+        arbitrator_strings.append(arbitrator_string)
+
+    gemini_prompts = []
+
+    for i in range(0, len(arbitrator_strings), GEMINI_MAX_RESPONDENT_COUNT):
+        gemini_prompt = f"{GEMINI_PROMPT_PREFIX}\n"
+
+        for arbitrator_string in arbitrator_strings[i : i + GEMINI_MAX_RESPONDENT_COUNT]:
+            gemini_prompt += f"\n{arbitrator_string}"
+
+        gemini_prompts.append(gemini_prompt)
+
+    gemini_outputs = []
+
+    with ThreadPoolExecutor(max_workers=GEMINI_MAX_THREAD_COUNT) as executor:
+        for gemini_output in executor.map(gemini_process_records, gemini_prompts):
+            gemini_outputs.append(gemini_output)
+
+    arbitrator_objects = []
+
+    for gemini_output in gemini_outputs:
+        if gemini_output is not None:
+            arbitrator_objects += gemini_output
+
+    if len(arbitrator_objects) != len(arbitrator_keys):
+        logging.warning("Cleaned arbitrator count does not match unique arbitrator count; keeping raw arbitrator values.")
+
+        for key in arbitrator_keys:
+            name, address = key
+
+            for row_index in arbitrator_rows[key]:
+                arbitrator_name_map[row_index] = name
+                arbitrator_address_map[row_index] = address
+
+        return arbitrator_name_map, arbitrator_address_map
+
+    for key, arbitrator_object in zip(arbitrator_keys, arbitrator_objects):
+        cleaned_address = ", ".join(
+            part
+            for part in [
+                arbitrator_object.address_line_1,
+                arbitrator_object.address_line_2,
+                arbitrator_object.address_line_3,
+                arbitrator_object.district,
+                arbitrator_object.state,
+                arbitrator_object.pin_code,
+            ]
+            if part is not None and str(part).strip() != ""
+        )
+
+        for row_index in arbitrator_rows[key]:
+            arbitrator_name_map[row_index] = arbitrator_object.name
+            arbitrator_address_map[row_index] = cleaned_address
+
+    return arbitrator_name_map, arbitrator_address_map
 
 
 def process_button_clicked(original_excel_file_path, original_excel_data_frame, arbitrator_name_header, arbitrator_address_header, arbitrator_phone_header, arbitrator_email_header, respondent_count, *inputs):
@@ -251,21 +355,30 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
     gemini_outputs = []
 
     with ThreadPoolExecutor(max_workers=GEMINI_MAX_THREAD_COUNT) as executor:
-        for gemini_output in executor.map(gemini_process_respondents, gemini_prompts):
+        for gemini_output in executor.map(gemini_process_records, gemini_prompts):
             gemini_outputs.append(gemini_output)
 
     respondent_objects = []
 
     for gemini_output in gemini_outputs:
-        respondent_objects += gemini_output
+        if gemini_output is not None:
+            respondent_objects += gemini_output
+
+    arbitrator_name_map, arbitrator_address_map = clean_arbitrators(original_excel_data_frame, arbitrator_name_header, arbitrator_address_header)
 
     processed_excel_data_frame = pd.DataFrame()
 
     if arbitrator_name_header != "":
-        processed_excel_data_frame["Arbitrator Name"] = original_excel_data_frame[arbitrator_name_header]
+        if arbitrator_name_map is None:
+            processed_excel_data_frame["Arbitrator Name"] = original_excel_data_frame[arbitrator_name_header]
+        else:
+            processed_excel_data_frame["Arbitrator Name"] = original_excel_data_frame.index.to_series().map(lambda row_index: arbitrator_name_map.get(row_index, ""))
 
     if arbitrator_address_header != "":
-        processed_excel_data_frame["Arbitrator Address"] = original_excel_data_frame[arbitrator_address_header]
+        if arbitrator_address_map is None:
+            processed_excel_data_frame["Arbitrator Address"] = original_excel_data_frame[arbitrator_address_header]
+        else:
+            processed_excel_data_frame["Arbitrator Address"] = original_excel_data_frame.index.to_series().map(lambda row_index: arbitrator_address_map.get(row_index, ""))
 
     if arbitrator_phone_header != "":
         processed_excel_data_frame["Arbitrator Phone"] = original_excel_data_frame[arbitrator_phone_header]
