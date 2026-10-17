@@ -1,6 +1,7 @@
-.idea
-.vscode
-env
+__pycache__/
+.idea/
+.vscode/
+env/
 install.txt
 pyproject.toml
 *.xlsx

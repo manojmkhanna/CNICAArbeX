@@ -1,35 +1,33 @@
 import logging
 import re
-
 from concurrent.futures import ThreadPoolExecutor
 
 import gradio as gr
 import pandas as pd
-
 from google import genai
 from pydantic import BaseModel
 
-DEBUG = False
+DEBUG = True
 MAX_RESPONDENT_COUNT = 20
 MAX_ADDRESS_HEADER_COUNT = 10
-GEMINI_MODEL_NAME = "gemini-3-flash-preview"
-GEMINI_PROMPT_PREFIX = "Split the following rows of Names and Addresses into columns such as Recipient Name/Entity Name, Address Line 1/Care of Name, Address Line 2, Address Line 3, District, State and PIN Code. " \
-    "Do not ignore duplicate rows of Names and Addresses. " \
-    "Add or fix titles like Mr., Ms., Mrs. or M/s. in Names, Care of Names and Addresses. Use the title Mrs. for female Names if Care of Names has the prefix W/o. " \
-    "Add or fix prefixes like S/o, D/o, F/o, M/o, H/o, W/o or C/o in Care of Names. " \
-    "Add periods to initials in Names and Care of Names. " \
-    "Fix spelling mistakes and punctuations in Names, Care of Names and Addresses if necessary. " \
-    "Fix incomplete Addresses if necessary. " \
-    "Remove redundancy in Addresses if necessary. Address Line 2 and Address Line 3 can be empty. " \
-    "Convert Names, Care of Names and Addresses to Proper Case if necessary."
+GEMINI_MODEL_NAME = "gemini-3.8-flash"
+GEMINI_THINKING_LEVEL = "low"
+GEMINI_PROMPT_PREFIX = (
+    "Split the following rows of Names and Addresses into columns such as Recipient Name/Entity Name, Address Line 1/Care of Name, Address Line 2, Address Line 3, District, State and PIN Code. "
+    "Do not ignore duplicate rows of Names and Addresses. "
+    "Add or fix titles like Mr., Ms., Mrs. or M/s. in Names, Care of Names and Addresses. Use the title Mrs. for female Names if Care of Names has the prefix W/o. "
+    "Add or fix prefixes like S/o, D/o, F/o, M/o, H/o, W/o or C/o in Care of Names. "
+    "Add periods to initials in Names and Care of Names. "
+    "Fix spelling mistakes and punctuations in Names, Care of Names and Addresses if possible. "
+    "Finish incomplete Addresses without Addreess Line 3/Area, District, State or PIN Code if possible. "
+    "Remove redundancy in Addresses if possible. Address Line 2 and Address Line 3 can be empty. "
+    "Convert Names, Care of Names and Addresses to Proper Case if possible."
+)
 GEMINI_MAX_RESPONDENT_COUNT = 50
 GEMINI_MAX_THREAD_COUNT = 10
 
 
-logging.basicConfig(
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO)
 
 
 class Respondent(BaseModel):
@@ -69,45 +67,27 @@ def original_excel_file_uploaded(original_excel_file_path):
 
     excel_sheet_names = excel_file.sheet_names
 
-    original_excel_sheet_name_dropdown = gr.Dropdown(
-        choices=excel_sheet_names,
-        value=excel_sheet_names[0]
-    )
+    original_excel_sheet_name_dropdown = gr.Dropdown(choices=excel_sheet_names, value=excel_sheet_names[0])
 
     original_excel_data_frame = excel_file.parse(excel_sheet_names[0])
     original_excel_data_frame = original_excel_data_frame.map(lambda x: str_trim_and_none(x))
     original_excel_data_frame.dropna(how="all", inplace=True)
-    original_excel_data_frame.fillna("", inplace=True)
+    original_excel_data_frame = original_excel_data_frame.map(lambda x: "" if pd.isna(x) else x)
 
     excel_column_headers = original_excel_data_frame.columns.tolist()
 
-    arbitrator_name_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value=""
-    )
+    arbitrator_name_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="")
 
-    arbitrator_address_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value=""
-    )
+    arbitrator_address_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="")
 
-    arbitrator_phone_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value=""
-    )
+    arbitrator_phone_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="")
 
-    arbitrator_email_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value=""
-    )
+    arbitrator_email_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="")
 
     name_header_dropdowns = []
 
     for i in range(MAX_RESPONDENT_COUNT):
-        name_header_dropdown = gr.Dropdown(
-            choices=excel_column_headers,
-            value=excel_column_headers[0]
-        )
+        name_header_dropdown = gr.Dropdown(choices=excel_column_headers, value=excel_column_headers[0])
 
         name_header_dropdowns.append(name_header_dropdown)
 
@@ -115,21 +95,11 @@ def original_excel_file_uploaded(original_excel_file_path):
 
     for i in range(MAX_RESPONDENT_COUNT):
         for j in range(MAX_ADDRESS_HEADER_COUNT):
-            address_header_dropdown = gr.Dropdown(
-                choices=excel_column_headers,
-                value=excel_column_headers[0]
-            )
+            address_header_dropdown = gr.Dropdown(choices=excel_column_headers, value=excel_column_headers[0])
 
             address_header_dropdowns.append(address_header_dropdown)
 
-    return [
-        original_excel_sheet_name_dropdown,
-        original_excel_data_frame,
-        arbitrator_name_header_dropdown,
-        arbitrator_address_header_dropdown,
-        arbitrator_phone_header_dropdown,
-        arbitrator_email_header_dropdown
-    ] + name_header_dropdowns + address_header_dropdowns
+    return [original_excel_sheet_name_dropdown, original_excel_data_frame, arbitrator_name_header_dropdown, arbitrator_address_header_dropdown, arbitrator_phone_header_dropdown, arbitrator_email_header_dropdown] + name_header_dropdowns + address_header_dropdowns
 
 
 def original_excel_sheet_name_dropdown_changed(original_excel_file_path, original_excel_sheet_name):
@@ -141,37 +111,22 @@ def original_excel_sheet_name_dropdown_changed(original_excel_file_path, origina
     original_excel_data_frame = excel_file.parse(original_excel_sheet_name)
     original_excel_data_frame = original_excel_data_frame.map(lambda x: str_trim_and_none(x))
     original_excel_data_frame.dropna(how="all", inplace=True)
-    original_excel_data_frame.fillna("", inplace=True)
+    original_excel_data_frame = original_excel_data_frame.map(lambda x: "" if pd.isna(x) else x)
 
     excel_column_headers = original_excel_data_frame.columns.tolist()
 
-    arbitrator_name_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value=""
-    )
+    arbitrator_name_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="")
 
-    arbitrator_address_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value=""
-    )
+    arbitrator_address_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="")
 
-    arbitrator_phone_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value=""
-    )
+    arbitrator_phone_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="")
 
-    arbitrator_email_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value=""
-    )
+    arbitrator_email_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="")
 
     name_header_dropdowns = []
 
     for i in range(MAX_RESPONDENT_COUNT):
-        name_header_dropdown = gr.Dropdown(
-            choices=excel_column_headers,
-            value=excel_column_headers[0]
-        )
+        name_header_dropdown = gr.Dropdown(choices=excel_column_headers, value=excel_column_headers[0])
 
         name_header_dropdowns.append(name_header_dropdown)
 
@@ -179,29 +134,18 @@ def original_excel_sheet_name_dropdown_changed(original_excel_file_path, origina
 
     for i in range(MAX_RESPONDENT_COUNT):
         for j in range(MAX_ADDRESS_HEADER_COUNT):
-            address_header_dropdown = gr.Dropdown(
-                choices=excel_column_headers,
-                value=excel_column_headers[0]
-            )
+            address_header_dropdown = gr.Dropdown(choices=excel_column_headers, value=excel_column_headers[0])
 
             address_header_dropdowns.append(address_header_dropdown)
 
-    return [
-        original_excel_data_frame,
-        arbitrator_name_header_dropdown,
-        arbitrator_address_header_dropdown,
-        arbitrator_phone_header_dropdown,
-        arbitrator_email_header_dropdown
-    ] + name_header_dropdowns + address_header_dropdowns
+    return [original_excel_data_frame, arbitrator_name_header_dropdown, arbitrator_address_header_dropdown, arbitrator_phone_header_dropdown, arbitrator_email_header_dropdown] + name_header_dropdowns + address_header_dropdowns
 
 
 def respondent_slider_changed(respondent_count):
     respondent_tabs = []
 
     for i in range(MAX_RESPONDENT_COUNT):
-        respondent_tab = gr.Tab(
-            visible=i < respondent_count
-        )
+        respondent_tab = gr.Tab(visible=i < respondent_count)
 
         respondent_tabs.append(respondent_tab)
 
@@ -212,9 +156,7 @@ def address_header_slider_changed(address_header_count):
     address_header_dropdowns = []
 
     for i in range(MAX_ADDRESS_HEADER_COUNT):
-        address_header_dropdown = gr.Dropdown(
-            visible=i < address_header_count
-        )
+        address_header_dropdown = gr.Dropdown(visible=i < address_header_count)
 
         address_header_dropdowns.append(address_header_dropdown)
 
@@ -230,9 +172,7 @@ def address_header_dropdown_changed(original_excel_data_frame, address_header):
     address_header_dropdowns = []
 
     for i in range(1, MAX_ADDRESS_HEADER_COUNT):
-        address_header_dropdown = gr.Dropdown(
-            value=original_excel_data_frame.columns[min(address_header_index + i, len(original_excel_data_frame.columns) - 1)]
-        )
+        address_header_dropdown = gr.Dropdown(value=original_excel_data_frame.columns[min(address_header_index + i, len(original_excel_data_frame.columns) - 1)])
 
         address_header_dropdowns.append(address_header_dropdown)
 
@@ -246,14 +186,7 @@ def gemini_process_respondents(gemini_prompt):
     try:
         gemini_client = genai.Client()
 
-        gemini_output = gemini_client.models.generate_content(
-            model=GEMINI_MODEL_NAME,
-            contents=gemini_prompt,
-            config={
-                "response_mime_type": "application/json",
-                "response_json_schema": RespondentList.model_json_schema()
-            }
-        )
+        gemini_output = gemini_client.models.generate_content(model=GEMINI_MODEL_NAME, contents=gemini_prompt, config={"response_mime_type": "application/json", "response_json_schema": RespondentList.model_json_schema(), "thinking_config": {"thinking_level": GEMINI_THINKING_LEVEL}})
 
         if DEBUG:
             logging.info(f"gemini_output: {gemini_output.text}")
@@ -268,8 +201,8 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
         return [None, None]
 
     name_headers = inputs[0:MAX_RESPONDENT_COUNT]
-    address_header_counts = inputs[MAX_RESPONDENT_COUNT:2 * MAX_RESPONDENT_COUNT]
-    address_header_groups = inputs[2 * MAX_RESPONDENT_COUNT:]
+    address_header_counts = inputs[MAX_RESPONDENT_COUNT : 2 * MAX_RESPONDENT_COUNT]
+    address_header_groups = inputs[2 * MAX_RESPONDENT_COUNT :]
 
     respondent_strings = []
     respondent_indexes = []
@@ -277,7 +210,7 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
     for i in range(respondent_count):
         name_header = name_headers[i]
         address_header_count = address_header_counts[i]
-        address_headers = address_header_groups[i * MAX_ADDRESS_HEADER_COUNT:i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
+        address_headers = address_header_groups[i * MAX_ADDRESS_HEADER_COUNT : i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
 
         for row_index, row in original_excel_data_frame.iterrows():
             name = str(row.loc[name_header]).strip()
@@ -310,7 +243,7 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
     for i in range(0, len(respondent_strings), GEMINI_MAX_RESPONDENT_COUNT):
         gemini_prompt = f"{GEMINI_PROMPT_PREFIX}\n"
 
-        for respondent_string in respondent_strings[i:i + GEMINI_MAX_RESPONDENT_COUNT]:
+        for respondent_string in respondent_strings[i : i + GEMINI_MAX_RESPONDENT_COUNT]:
             gemini_prompt += f"\n{respondent_string}"
 
         gemini_prompts.append(gemini_prompt)
@@ -381,7 +314,7 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
     for i in range(respondent_count):
         name_header = name_headers[i]
         address_header_count = address_header_counts[i]
-        address_headers = address_header_groups[i * MAX_ADDRESS_HEADER_COUNT:i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
+        address_headers = address_header_groups[i * MAX_ADDRESS_HEADER_COUNT : i * MAX_ADDRESS_HEADER_COUNT + address_header_count]
 
         if name_header in other_headers:
             other_headers.remove(name_header)
@@ -392,10 +325,10 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
 
     processed_excel_data_frame = pd.concat([processed_excel_data_frame, original_excel_data_frame[other_headers]], axis=1)
 
-    processed_excel_data_frame.fillna("", inplace=True)
+    processed_excel_data_frame = processed_excel_data_frame.map(lambda x: "" if pd.isna(x) else x)
 
     processed_excel_data_frame["No. of Respondents"] = pd.to_numeric(processed_excel_data_frame["No. of Respondents"], "coerce")
-    processed_excel_data_frame["No. of Respondents"].fillna(0, inplace=True)
+    processed_excel_data_frame["No. of Respondents"] = processed_excel_data_frame["No. of Respondents"].fillna(0)
 
     sort_by_headers = []
 
@@ -410,9 +343,7 @@ def process_button_clicked(original_excel_file_path, original_excel_data_frame, 
 
     processed_excel_data_frame.to_excel(processed_excel_file_path, index=False)
 
-    download_button = gr.DownloadButton(
-        value=processed_excel_file_path
-    )
+    download_button = gr.DownloadButton(value=processed_excel_file_path)
 
     return [processed_excel_data_frame, download_button]
 
@@ -424,46 +355,29 @@ def test_button_clicked():
 
     excel_sheet_names = excel_file.sheet_names
 
-    original_excel_sheet_name_dropdown = gr.Dropdown(
-        choices=excel_sheet_names,
-        value=excel_sheet_names[0]
-    )
+    original_excel_sheet_name_dropdown = gr.Dropdown(choices=excel_sheet_names, value=excel_sheet_names[0])
 
     original_excel_data_frame = excel_file.parse(excel_sheet_names[0])
     original_excel_data_frame = original_excel_data_frame.map(lambda x: str_trim_and_none(x))
     original_excel_data_frame.dropna(how="all", inplace=True)
-    original_excel_data_frame.fillna("", inplace=True)
+    original_excel_data_frame = original_excel_data_frame.map(lambda x: "" if pd.isna(x) else x)
 
     excel_column_headers = original_excel_data_frame.columns.tolist()
 
-    arbitrator_name_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value="ARB NAME"
-    )
+    arbitrator_name_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="ARB NAME")
 
-    arbitrator_address_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value="ARB ADDRESS"
-    )
+    arbitrator_address_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="ARB ADDRESS")
 
-    arbitrator_phone_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value="ARB CONTACT NO."
-    )
+    arbitrator_phone_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="ARB CONTACT NO.")
 
-    arbitrator_email_header_dropdown = gr.Dropdown(
-        choices=["", *excel_column_headers],
-        value="ARB Email ID"
-    )
+    arbitrator_email_header_dropdown = gr.Dropdown(choices=["", *excel_column_headers], value="ARB Email ID")
 
     respondent_count = 2
 
     name_header_dropdowns = []
 
     for i in range(MAX_RESPONDENT_COUNT):
-        name_header_dropdown = gr.Dropdown(
-            choices=excel_column_headers
-        )
+        name_header_dropdown = gr.Dropdown(choices=excel_column_headers)
 
         name_header_dropdowns.append(name_header_dropdown)
 
@@ -476,9 +390,7 @@ def test_button_clicked():
 
     for i in range(MAX_RESPONDENT_COUNT):
         for j in range(MAX_ADDRESS_HEADER_COUNT):
-            address_header_dropdown = gr.Dropdown(
-                choices=excel_column_headers
-            )
+            address_header_dropdown = gr.Dropdown(choices=excel_column_headers)
 
             address_header_dropdowns.append(address_header_dropdown)
 
@@ -517,7 +429,7 @@ def test_button_clicked():
         respondent_count,
         *name_header_dropdowns,
         *address_header_counts,
-        *address_header_dropdowns
+        *address_header_dropdowns,
     ]
 
 
@@ -526,56 +438,27 @@ with gr.Blocks(title="CNICA ArbeX") as app:
 
     gr.Markdown("### Step 1: Upload Excel File ###")
 
-    original_excel_file = gr.File(
-        label="Excel file",
-        file_types=[".xlsx", ".xls"],
-        interactive=True
-    )
+    original_excel_file = gr.File(label="Excel file", file_types=[".xlsx", ".xls"], interactive=True)
 
-    original_excel_sheet_name_dropdown = gr.Dropdown(
-        label="Excel sheet",
-        interactive=True
-    )
+    original_excel_sheet_name_dropdown = gr.Dropdown(label="Excel sheet", interactive=True)
 
-    original_excel_data_frame = gr.DataFrame(
-        label="Excel data",
-        headers=[""],
-        interactive=False
-    )
+    original_excel_data_frame = gr.DataFrame(label="Excel data", headers=[""], interactive=False)
 
     gr.Markdown("### Step 2: Select Arbitrator's Name column header (Optional) ###")
 
     with gr.Row():
         with gr.Column():
-            arbitrator_name_header_dropdown = gr.Dropdown(
-                label="Arbitrator's Name column header (Optional)",
-                interactive=True
-            )
+            arbitrator_name_header_dropdown = gr.Dropdown(label="Arbitrator's Name column header (Optional)", interactive=True)
 
-            arbitrator_phone_header_dropdown = gr.Dropdown(
-                label="Arbitrator's Phone column header (Optional)",
-                interactive=True
-            )
+            arbitrator_phone_header_dropdown = gr.Dropdown(label="Arbitrator's Phone column header (Optional)", interactive=True)
         with gr.Column():
-            arbitrator_address_header_dropdown = gr.Dropdown(
-                label="Arbitrator's Address column header (Optional)",
-                interactive=True
-            )
+            arbitrator_address_header_dropdown = gr.Dropdown(label="Arbitrator's Address column header (Optional)", interactive=True)
 
-            arbitrator_email_header_dropdown = gr.Dropdown(
-                label="Arbitrator's Email column header (Optional)",
-                interactive=True
-            )
+            arbitrator_email_header_dropdown = gr.Dropdown(label="Arbitrator's Email column header (Optional)", interactive=True)
 
     gr.Markdown("### Step 3: Select No. of Respondents ###")
 
-    respondent_slider = gr.Slider(
-        label="No. of Respondents",
-        minimum=1,
-        maximum=MAX_RESPONDENT_COUNT,
-        step=1,
-        interactive=True
-    )
+    respondent_slider = gr.Slider(label="No. of Respondents", minimum=1, maximum=MAX_RESPONDENT_COUNT, step=1, interactive=True)
 
     gr.Markdown("### Step 4: Select Respondent's Name and Address column headers ###")
 
@@ -585,145 +468,64 @@ with gr.Blocks(title="CNICA ArbeX") as app:
     address_header_dropdowns = []
 
     for i in range(MAX_RESPONDENT_COUNT):
-        with gr.Tab(
-            label=f"Respondent {i + 1}",
-            visible=i == 0
-        ) as respondent_tab:
-            with gr.Row():
-                with gr.Column():
-                    name_header_dropdown = gr.Dropdown(
-                        label="Name column header",
-                        interactive=True
-                    )
+        with gr.Tab(label=f"Respondent {i + 1}", visible=i == 0) as respondent_tab, gr.Row():
+            with gr.Column():
+                name_header_dropdown = gr.Dropdown(label="Name column header", interactive=True)
 
-                    name_header_dropdowns.append(name_header_dropdown)
+                name_header_dropdowns.append(name_header_dropdown)
 
-                with gr.Column():
-                    address_header_slider = gr.Slider(
-                        label="No. of Address column headers",
-                        minimum=1,
-                        maximum=MAX_ADDRESS_HEADER_COUNT,
-                        step=1,
-                        interactive=True
-                    )
+            with gr.Column():
+                address_header_slider = gr.Slider(label="No. of Address column headers", minimum=1, maximum=MAX_ADDRESS_HEADER_COUNT, step=1, interactive=True)
 
-                    address_header_sliders.append(address_header_slider)
+                address_header_sliders.append(address_header_slider)
 
-                    for j in range(MAX_ADDRESS_HEADER_COUNT):
-                        address_header_dropdown = gr.Dropdown(
-                            label=f"Address column header {j + 1}",
-                            interactive=True,
-                            visible=j == 0
-                        )
+                for j in range(MAX_ADDRESS_HEADER_COUNT):
+                    address_header_dropdown = gr.Dropdown(label=f"Address column header {j + 1}", interactive=True, visible=j == 0)
 
-                        address_header_dropdowns.append(address_header_dropdown)
+                    address_header_dropdowns.append(address_header_dropdown)
 
         respondent_tabs.append(respondent_tab)
 
     gr.Markdown("### Step 5: Process Excel File ###")
 
-    process_button = gr.Button(
-        value="Process",
-        variant="primary",
-        interactive=True
-    )
+    process_button = gr.Button(value="Process", variant="primary", interactive=True)
 
-    processed_excel_data_frame = gr.DataFrame(
-        label="Processed Excel data",
-        headers=[""],
-        interactive=False
-    )
+    processed_excel_data_frame = gr.DataFrame(label="Processed Excel data", headers=[""], interactive=False)
 
     gr.Markdown("### Step 6: Download Excel File ###")
 
-    download_button = gr.DownloadButton(
-        value="Download",
-        variant="primary",
-        interactive=True
-    )
+    download_button = gr.DownloadButton(value="Download", variant="primary", interactive=True)
 
     original_excel_file.upload(
         fn=original_excel_file_uploaded,
         inputs=original_excel_file,
-        outputs=[
-            original_excel_sheet_name_dropdown,
-            original_excel_data_frame,
-            arbitrator_name_header_dropdown,
-            arbitrator_address_header_dropdown,
-            arbitrator_phone_header_dropdown,
-            arbitrator_email_header_dropdown,
-            *name_header_dropdowns,
-            *address_header_dropdowns
-        ]
+        outputs=[original_excel_sheet_name_dropdown, original_excel_data_frame, arbitrator_name_header_dropdown, arbitrator_address_header_dropdown, arbitrator_phone_header_dropdown, arbitrator_email_header_dropdown, *name_header_dropdowns, *address_header_dropdowns],
     )
 
     original_excel_sheet_name_dropdown.input(
         fn=original_excel_sheet_name_dropdown_changed,
-        inputs=[
-            original_excel_file,
-            original_excel_sheet_name_dropdown
-        ],
-        outputs=[
-            original_excel_data_frame,
-            arbitrator_name_header_dropdown,
-            arbitrator_address_header_dropdown,
-            arbitrator_phone_header_dropdown,
-            arbitrator_email_header_dropdown,
-            *name_header_dropdowns,
-            *address_header_dropdowns
-        ]
+        inputs=[original_excel_file, original_excel_sheet_name_dropdown],
+        outputs=[original_excel_data_frame, arbitrator_name_header_dropdown, arbitrator_address_header_dropdown, arbitrator_phone_header_dropdown, arbitrator_email_header_dropdown, *name_header_dropdowns, *address_header_dropdowns],
     )
 
-    respondent_slider.change(
-        fn=respondent_slider_changed,
-        inputs=respondent_slider,
-        outputs=respondent_tabs
-    )
+    respondent_slider.change(fn=respondent_slider_changed, inputs=respondent_slider, outputs=respondent_tabs)
 
     for i in range(MAX_RESPONDENT_COUNT):
         address_header_slider = address_header_sliders[i]
-        address_header_slider.change(
-            fn=address_header_slider_changed,
-            inputs=address_header_slider,
-            outputs=address_header_dropdowns[i * 10:i * 10 + 10]
-        )
+        address_header_slider.change(fn=address_header_slider_changed, inputs=address_header_slider, outputs=address_header_dropdowns[i * 10 : i * 10 + 10])
 
     for i in range(MAX_RESPONDENT_COUNT):
         address_header_dropdown = address_header_dropdowns[i * 10]
-        address_header_dropdown.change(
-            fn=address_header_dropdown_changed,
-            inputs=[
-                original_excel_data_frame,
-                address_header_dropdown
-            ],
-            outputs=address_header_dropdowns[i * 10 + 1:i * 10 + 10]
-        )
+        address_header_dropdown.change(fn=address_header_dropdown_changed, inputs=[original_excel_data_frame, address_header_dropdown], outputs=address_header_dropdowns[i * 10 + 1 : i * 10 + 10])
 
     process_button.click(
         fn=process_button_clicked,
-        inputs=[
-            original_excel_file,
-            original_excel_data_frame,
-            arbitrator_name_header_dropdown,
-            arbitrator_address_header_dropdown,
-            arbitrator_phone_header_dropdown,
-            arbitrator_email_header_dropdown,
-            respondent_slider,
-            *name_header_dropdowns,
-            *address_header_sliders,
-            *address_header_dropdowns
-        ],
-        outputs=[
-            processed_excel_data_frame,
-            download_button
-        ]
+        inputs=[original_excel_file, original_excel_data_frame, arbitrator_name_header_dropdown, arbitrator_address_header_dropdown, arbitrator_phone_header_dropdown, arbitrator_email_header_dropdown, respondent_slider, *name_header_dropdowns, *address_header_sliders, *address_header_dropdowns],
+        outputs=[processed_excel_data_frame, download_button],
     )
 
     if DEBUG:
-        test_button = gr.Button(
-            value="Test",
-            interactive=True
-        )
+        test_button = gr.Button(value="Test", interactive=True)
 
         test_button.click(
             fn=test_button_clicked,
@@ -738,12 +540,8 @@ with gr.Blocks(title="CNICA ArbeX") as app:
                 respondent_slider,
                 *name_header_dropdowns,
                 *address_header_sliders,
-                *address_header_dropdowns
-            ]
+                *address_header_dropdowns,
+            ],
         )
 
-app.launch(
-    theme=gr.themes.Default(
-        primary_hue=gr.themes.colors.blue
-    )
-)
+app.launch(theme=gr.themes.Default(primary_hue=gr.themes.colors.blue))

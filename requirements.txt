@@ -1,6 +1,6 @@
-gradio
-pandas
-xlrd
-openpyxl
-google-genai
-pydantic
+gradio==6.30.0
+pandas==3.0.6
+xlrd==2.0.2
+openpyxl==3.1.5
+google-genai==2.31.0
+pydantic==2.14.1
